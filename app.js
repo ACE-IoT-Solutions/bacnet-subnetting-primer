@@ -1909,6 +1909,14 @@ function renderSubnetList() {
               <span style="font-size: 0.8rem; color: var(--text-secondary);">IP: <strong style="color: #fff;">${gatewayIp || 'Invalid'}</strong></span>
             </div>
           </div>
+          
+          <div class="form-group" style="margin-bottom: 0; margin-top: 0.25rem;">
+            <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Planned Device Count (for Construction)</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="number" class="planner-subnet-planned-devices" value="${sub.plannedDevices || ''}" min="0" max="65530" style="width: 100px; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 20">
+              <button class="btn btn-secondary planner-btn-autosize" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; flex: none; min-width: auto;">Auto-Size</button>
+            </div>
+          </div>
         </div>
         
         <!-- Right Column: BACnet Configuration -->
@@ -2011,6 +2019,34 @@ function renderSubnetList() {
     gwOffsetInput.addEventListener('input', () => {
       sub.gatewayOffset = parseInt(gwOffsetInput.value) || 1;
       updatePlannerPreviews();
+    });
+
+    const plannedInput = card.querySelector('.planner-subnet-planned-devices');
+    plannedInput.addEventListener('input', () => {
+      sub.plannedDevices = parseInt(plannedInput.value) || 0;
+    });
+
+    const autosizeBtn = card.querySelector('.planner-btn-autosize');
+    autosizeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const plannedDevices = parseInt(plannedInput.value) || 0;
+      sub.plannedDevices = plannedDevices;
+      
+      // Calculate required hosts: 20% headroom, never less than 10 spare IPs
+      const requiredHosts = Math.max(Math.ceil(plannedDevices * 1.20), plannedDevices + 10);
+      
+      // Find smallest subnet size (largest CIDR) that holds required hosts, min size of /27
+      let targetCidr = 27;
+      for (let c = 27; c >= 16; c--) {
+        const usable = (1 << (32 - c)) - 2;
+        if (usable >= requiredHosts) {
+          targetCidr = c;
+          break;
+        }
+      }
+      
+      sub.cidr = targetCidr;
+      renderSubnetList();
     });
 
     const bbmdChk = card.querySelector('.planner-bbmd-chk');
