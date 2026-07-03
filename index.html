@@ -604,6 +604,42 @@
           <p>In high-security or multi-vendor buildings, engineers configure a <strong>Split Horizon</strong> (partitioned BDT) architecture. Instead of syncing identical tables, individual BBMDs are configured with custom BDT tables containing only a subset of the building's BBMDs. For example, a tenant subnet BBMD might register the Core BMS Server BBMD, but exclude other tenants' BBMDs. This isolates tenant networks from each other's broadcast traffic while preserving communication with the central BMS.</p>
           <p><strong>The Bidirectional Rule:</strong> BACnet discovery requires bidirectionality. If BBMD A tunnels broadcasts to BBMD B, but BBMD B's BDT does not include BBMD A, then Device A can send a Who-Is query to Device B, but Device B's I-Am reply will be blocked from traveling back to Subnet A, causing discovery to fail. Split horizon designs must be carefully configured to avoid asymmetric routing faults.</p>
 
+          <div class="split-horizon-example-box" style="margin: 1.25rem 0; padding: 1.1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            <h5 style="color: var(--primary); font-size: 0.85rem; font-weight: bold; margin: 0 0 0.5rem 0; text-transform: uppercase; letter-spacing: 0.05em;">Split Horizon Case Study: Multi-Tenant Isolation</h5>
+            <p style="font-size: 0.82rem; margin-bottom: 0.75rem; line-height: 1.45;">Consider a building network with 3 subnets: a Central BMS subnet, a Tenant 1 subnet, and a Tenant 2 subnet. The goal is to allow the central BMS to monitor all devices, while keeping the tenants fully isolated from each other at the broadcast layer.</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem;">
+              <div style="background: rgba(0,0,0,0.2); padding: 0.6rem; border-radius: var(--radius-sm); border-left: 3px solid var(--primary);">
+                <strong style="font-size: 0.8rem; color: #fff; display: block; margin-bottom: 0.2rem;">BBMD A (BMS Subnet)</strong>
+                <span style="font-size: 0.75rem; color: var(--text-secondary);">BDT Entries:</span>
+                <ul style="margin: 0.15rem 0 0 0; padding-left: 1rem; font-size: 0.72rem; color: #fff;">
+                  <li>BBMD B (Tenant 1)</li>
+                  <li>BBMD C (Tenant 2)</li>
+                </ul>
+              </div>
+              <div style="background: rgba(0,0,0,0.2); padding: 0.6rem; border-radius: var(--radius-sm); border-left: 3px solid var(--secondary);">
+                <strong style="font-size: 0.8rem; color: #fff; display: block; margin-bottom: 0.2rem;">BBMD B (Tenant 1 Subnet)</strong>
+                <span style="font-size: 0.75rem; color: var(--text-secondary);">BDT Entries:</span>
+                <ul style="margin: 0.15rem 0 0 0; padding-left: 1rem; font-size: 0.72rem; color: #fff;">
+                  <li>BBMD A (BMS)</li>
+                  <li style="color: var(--text-muted); text-decoration: line-through;">BBMD C (Isolated)</li>
+                </ul>
+              </div>
+              <div style="background: rgba(0,0,0,0.2); padding: 0.6rem; border-radius: var(--radius-sm); border-left: 3px solid var(--secondary);">
+                <strong style="font-size: 0.8rem; color: #fff; display: block; margin-bottom: 0.2rem;">BBMD C (Tenant 2 Subnet)</strong>
+                <span style="font-size: 0.75rem; color: var(--text-secondary);">BDT Entries:</span>
+                <ul style="margin: 0.15rem 0 0 0; padding-left: 1rem; font-size: 0.72rem; color: #fff;">
+                  <li>BBMD A (BMS)</li>
+                  <li style="color: var(--text-muted); text-decoration: line-through;">BBMD B (Isolated)</li>
+                </ul>
+              </div>
+            </div>
+            
+            <p style="font-size: 0.8rem; margin: 0; color: var(--text-secondary); line-height: 1.45;">
+              <strong>Why this works:</strong> BBMD B and BBMD C only list BBMD A in their BDTs. As a result, Tenant 1 broadcasts are only tunneled to the BMS, never leaking to Tenant 2. Because BBMD A registers both remote routers, bidirectional communications are maintained with the BMS on both sides.
+            </p>
+          </div>
+
           <!-- Interactive BBMD Simulation Diagram -->
           <div class="bbmd-diagram-wrapper">
             <h4 class="primer-subheading" style="font-size: 0.95rem; margin-bottom: 0.5rem;">Interactive BBMD Broadcast Simulator</h4>
