@@ -1752,6 +1752,7 @@ const plannerState = {
       ip: '192.168.1.0',
       cidr: 24,
       gatewayOffset: 1,
+      vlan: 10,
       bbmdEnabled: true,
       bbmdOffset: 10,
       bmsPlaced: true,
@@ -1764,6 +1765,7 @@ const plannerState = {
       ip: '192.168.2.0',
       cidr: 24,
       gatewayOffset: 1,
+      vlan: 20,
       bbmdEnabled: true,
       bbmdOffset: 10,
       bmsPlaced: false,
@@ -1776,6 +1778,7 @@ const plannerState = {
       ip: '192.168.3.0',
       cidr: 23,
       gatewayOffset: 1,
+      vlan: 30,
       bbmdEnabled: false,
       bbmdOffset: 10,
       bmsPlaced: false,
@@ -1843,13 +1846,20 @@ function renderSubnetList() {
       <div class="planner-card-grid">
         <!-- Left Column: IP Configuration -->
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet Network IP & Mask</label>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <input type="text" class="planner-subnet-ip" value="${sub.ip}" style="flex: 2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);" placeholder="e.g. 192.168.1.0">
-              <select class="planner-subnet-cidr" style="flex: 1; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
-                ${cidrOptionsHtml}
-              </select>
+          <div style="display: flex; gap: 0.75rem;">
+            <div class="form-group" style="margin-bottom: 0; flex: 2;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet Network IP & Mask</label>
+              <div style="display: flex; gap: 0.4rem; align-items: center;">
+                <input type="text" class="planner-subnet-ip" value="${sub.ip}" style="flex: 2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;" placeholder="e.g. 192.168.1.0">
+                <select class="planner-subnet-cidr" style="flex: 1.2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;">
+                  ${cidrOptionsHtml}
+                </select>
+              </div>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 0; flex: 1;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">VLAN ID</label>
+              <input type="number" class="planner-subnet-vlan" value="${sub.vlan || ''}" min="1" max="4094" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;" placeholder="e.g. 10">
             </div>
           </div>
           
@@ -1928,6 +1938,19 @@ function renderSubnetList() {
     const cidrSelect = card.querySelector('.planner-subnet-cidr');
     cidrSelect.addEventListener('change', () => {
       sub.cidr = parseInt(cidrSelect.value);
+      updatePlannerPreviews();
+    });
+
+    const vlanInput = card.querySelector('.planner-subnet-vlan');
+    vlanInput.addEventListener('input', () => {
+      let val = parseInt(vlanInput.value);
+      if (!isNaN(val)) {
+        if (val < 1) val = 1;
+        if (val > 4094) val = 4094;
+        sub.vlan = val;
+      } else {
+        sub.vlan = '';
+      }
       updatePlannerPreviews();
     });
 
@@ -2012,6 +2035,7 @@ function addPlannerSubnet() {
     ip: `192.168.${nextOctet}.0`,
     cidr: 24,
     gatewayOffset: 1,
+    vlan: nextOctet * 10,
     bbmdEnabled: false,
     bbmdOffset: 10,
     bmsPlaced: false,
@@ -2170,10 +2194,11 @@ function updatePlannerPreviews() {
   plannerState.subnets.forEach((sub, i) => {
     const details = getSubnetDetails(sub.ip, sub.cidr);
     const limit = details ? (sub.cidr >= 24 ? details.numHosts : Math.min(details.numHosts, 100)) : 0;
+    const vlanStr = sub.vlan ? `VLAN ${sub.vlan}` : 'No VLAN';
     structureHtml += `
       <div class="sheet-item subnet" style="margin-top: 0.25rem;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
-        <span>Sheet ${i + 2}: <strong>${escapeHtml(sub.name.substring(0, 18))}</strong> (${limit} IPs planned)</span>
+        <span>Sheet ${i + 2}: <strong>${escapeHtml(sub.name.substring(0, 18))}</strong> (${vlanStr}, ${limit} IPs planned)</span>
       </div>
     `;
   });
@@ -2339,13 +2364,14 @@ function exportPlannerXlsx() {
 
     // 1. Summary Sheet Setup
     const summaryRows = [
-      [makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", ""],
-      [makeCell("  BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", ""],
-      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", ""],
+      [makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", ""],
+      [makeCell("  BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", "", ""],
+      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", "", ""],
       [], // spacer
-      [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", ""],
+      [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", "", ""],
       [
         makeCell("Subnet Name", "tableHeader"),
+        makeCell("VLAN ID", "tableHeader"),
         makeCell("Network ID / CIDR", "tableHeader"),
         makeCell("Subnet Mask", "tableHeader"),
         makeCell("Default Gateway IP", "tableHeader"),
@@ -2376,6 +2402,7 @@ function exportPlannerXlsx() {
 
       summaryRows.push([
         makeCell(sub.name, rowStyle),
+        makeCell(sub.vlan || 'None', rowStyle),
         makeCell(netCidr, rowStyle),
         makeCell(maskStr, rowStyle),
         makeCell(gatewayIp, rowStyle),
@@ -2391,13 +2418,13 @@ function exportPlannerXlsx() {
     // BDT schedule segment
     const bdtSectionHeaderRow = 8 + plannerState.subnets.length;
 
-    summaryRows.push([makeCell("Global Broadcast Distribution Table (BDT) Schedule", "sectionHeader"), "", "", "", "", "", ""]);
+    summaryRows.push([makeCell("Global Broadcast Distribution Table (BDT) Schedule", "sectionHeader"), "", "", "", "", "", "", ""]);
     summaryRows.push([
       makeCell("BBMD IP Address", "tableHeader"),
       makeCell("Subnet Mask", "tableHeader"),
       makeCell("BACnet UDP Port", "tableHeader"),
       makeCell("Subnet Name Reference", "tableHeader"),
-      "", "", ""
+      "", "", "", ""
     ]);
 
     const bbmds = plannerState.subnets.filter(s => s.bbmdEnabled).map(s => {
@@ -2412,7 +2439,7 @@ function exportPlannerXlsx() {
     if (bbmds.length === 0) {
       summaryRows.push([
         makeCell("No BBMD routers configured in this network plan. Broadcasts will not cross subnets.", "dataCell"),
-        "", "", "", "", "", ""
+        "", "", "", "", "", "", ""
       ]);
     } else {
       bbmds.forEach((bbmd, idx) => {
@@ -2422,7 +2449,7 @@ function exportPlannerXlsx() {
           makeCell(bbmd.mask, rowStyle),
           makeCell(47808, rowStyle),
           makeCell(bbmd.name, rowStyle),
-          "", "", ""
+          "", "", "", ""
         ]);
       });
     }
@@ -2437,7 +2464,7 @@ function exportPlannerXlsx() {
 
     summaryRows.push([
       makeCell("ACE IoT Solutions — OT Network Management & Security Services", "brandCardHeader"),
-      "", "", "", "", "", ""
+      "", "", "", "", "", "", ""
     ]);
     
     summaryRows.push([
@@ -2449,7 +2476,7 @@ function exportPlannerXlsx() {
         "Get in touch with our team: visit https://aceiotsolutions.com or email us at info@aceiotsolutions.com",
         "brandCardBody"
       ),
-      "", "", "", "", "", ""
+      "", "", "", "", "", "", ""
     ]);
 
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
@@ -2457,6 +2484,7 @@ function exportPlannerXlsx() {
     // Widths
     wsSummary['!cols'] = [
       { wch: 25 }, // Subnet Name
+      { wch: 10 }, // VLAN ID
       { wch: 20 }, // Network ID / CIDR
       { wch: 18 }, // Subnet Mask
       { wch: 18 }, // Default Gateway IP
@@ -2467,17 +2495,17 @@ function exportPlannerXlsx() {
 
     // Merges
     const summaryMerges = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // Brand Header
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }, // Title
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } }, // Subtitle
-      { s: { r: 4, c: 0 }, e: { r: 4, c: 6 } }, // Section 1 Header
-      { s: { r: bdtSectionHeaderRow, c: 0 }, e: { r: bdtSectionHeaderRow, c: 6 } }, // Section 2 Header
-      { s: { r: brandHeaderRow, c: 0 }, e: { r: brandHeaderRow, c: 6 } }, // Brand Header
-      { s: { r: brandBodyRow, c: 0 }, e: { r: brandBodyRow, c: 6 } }  // Brand Body
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Brand Header
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Title
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }, // Subtitle
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // Section 1 Header
+      { s: { r: bdtSectionHeaderRow, c: 0 }, e: { r: bdtSectionHeaderRow, c: 7 } }, // Section 2 Header
+      { s: { r: brandHeaderRow, c: 0 }, e: { r: brandHeaderRow, c: 7 } }, // Brand Header
+      { s: { r: brandBodyRow, c: 0 }, e: { r: brandBodyRow, c: 7 } }  // Brand Body
     ];
     
     if (bbmds.length === 0) {
-      summaryMerges.push({ s: { r: bdtSectionHeaderRow + 2, c: 0 }, e: { r: bdtSectionHeaderRow + 2, c: 6 } });
+      summaryMerges.push({ s: { r: bdtSectionHeaderRow + 2, c: 0 }, e: { r: bdtSectionHeaderRow + 2, c: 7 } });
     }
 
     wsSummary['!merges'] = summaryMerges;
@@ -2520,6 +2548,7 @@ function exportPlannerXlsx() {
       const properties = [
         ["Network IP / CIDR", `${sub.ip}/${sub.cidr}`],
         ["Subnet Mask", details ? details.mask : 'N/A'],
+        ["VLAN ID", sub.vlan || 'None'],
         ["Default Gateway IP", gatewayIp],
         ["BBMD IP Address", bbmdIp]
       ];
@@ -2559,8 +2588,8 @@ function exportPlannerXlsx() {
       }
 
       // Add extra BDT rows if necessary
-      if (sub.bbmdEnabled && otherBbmds.length > 3) {
-        for (let i = 3; i < otherBbmds.length; i++) {
+      if (sub.bbmdEnabled && otherBbmds.length > 4) {
+        for (let i = 4; i < otherBbmds.length; i++) {
           subnetRows.push([
             makeCell("", "dataCell"),
             makeCell("", "dataCell"),
@@ -2650,13 +2679,14 @@ function exportPlannerXlsx() {
         subnetMerges.push({ s: { r: 6, c: 3 }, e: { r: 6, c: 5 } });
         subnetMerges.push({ s: { r: 7, c: 3 }, e: { r: 7, c: 5 } });
         subnetMerges.push({ s: { r: 8, c: 3 }, e: { r: 8, c: 5 } });
+        subnetMerges.push({ s: { r: 9, c: 3 }, e: { r: 9, c: 5 } });
       }
 
       wsSubnet['!merges'] = subnetMerges;
       
       // Row Heights
       const subnetRowHeights = [];
-      const dataHeaderRow = 4 + 4 + (sub.bbmdEnabled && otherBbmds.length > 3 ? otherBbmds.length - 3 : 0) + 3;
+      const dataHeaderRow = 4 + 5 + (sub.bbmdEnabled && otherBbmds.length > 4 ? otherBbmds.length - 4 : 0) + 3;
       for (let r = 0; r <= dataHeaderRow; r++) {
         subnetRowHeights.push({ hpt: 20 });
       }

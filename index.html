@@ -680,6 +680,23 @@
             </div>
           </div>
         </div>
+      <!-- Section 4: Virtual LANs (VLANs) in OT Networks -->
+      <div class="primer-section">
+        <h3 class="card-title" style="border: none; padding-bottom: 0;">4. Network Segmentation: Virtual LANs (VLANs)</h3>
+        <div class="primer-card" style="margin-top: 1.5rem;">
+          <h4 class="primer-subheading">What is a VLAN?</h4>
+          <p>A <strong>Virtual Local Area Network (VLAN)</strong> is a logical partitioning of a physical network switch into multiple distinct broadcast domains. Devices on different VLANs cannot communicate directly at Layer 2 (Ethernet level), even if they are plugged into the same physical hardware.</p>
+          
+          <h4 class="primer-subheading" style="margin-top: 1.5rem;">Why Use VLANs in BACnet and Building Automation?</h4>
+          <ul class="custom-list">
+            <li><strong>IT-OT Segmentation & Security:</strong> Isolating building automation systems (HVAC, lighting, physical security) on dedicated VLANs limits exposure and prevents unauthorized access or malware transmission from corporate IT networks to operational infrastructure.</li>
+            <li><strong>Broadcast Containment:</strong> Large BACnet networks generate substantial broadcast traffic (Who-Is/I-Am requests). Segmenting the network into multiple VLANs isolates broadcast traffic to prevent performance degradation.</li>
+            <li><strong>IP Subnet Mapping:</strong> Each VLAN maps 1-to-1 to a distinct IP subnet. Routers or Layer 3 switches with security access control lists (ACLs) are then used to control inter-VLAN routing, and BBMDs/BDTs are used to tunnel BACnet broadcasts.</li>
+          </ul>
+
+          <h4 class="primer-subheading" style="margin-top: 1.5rem;">VLAN IDs and Tagging (IEEE 802.1Q)</h4>
+          <p>Each VLAN is assigned a unique 12-bit number called a <strong>VLAN ID (VID)</strong> ranging from <code>1</code> to <code>4094</code>. Switches append 802.1Q tags to Ethernet frames to preserve VLAN tagging over switch-to-switch trunk connections. In the Network Planner tab, you can assign VLAN IDs to document and plan your network architecture.</p>
+        </div>
       </div>
 
     </div>
