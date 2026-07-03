@@ -14,7 +14,7 @@ import {
   analyzeRelationship,
   toBinaryString
 } from './calculator.js';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 
 // DOM Cache
 const dom = {
@@ -2198,26 +2198,157 @@ function addPlannerAlert(text, type) {
   dom.plannerValidationAlerts.appendChild(alert);
 }
 
-// Export the design using SheetJS
+// Export the design using SheetJS with styling
 function exportPlannerXlsx() {
   if (plannerState.subnets.length === 0) {
     alert("Please add at least one subnet to export.");
     return;
   }
-  
+
+  // Style Constants matching ACE IoT Brand Colors (Charcoal background, white text, lime highlights)
+  const STYLES = {
+    title: {
+      font: { name: 'Segoe UI', sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '0F172A' } }, // Slate 900
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 }
+    },
+    subtitle: {
+      font: { name: 'Segoe UI', sz: 10, italic: true, color: { rgb: '94A3B8' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '0F172A' } }, // Slate 900
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 }
+    },
+    sectionHeader: {
+      font: { name: 'Segoe UI', sz: 12, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '1E293B' } }, // Slate 800
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'medium', color: { rgb: 'C1D200' } } // Lime Accent Line
+      }
+    },
+    tableHeader: {
+      font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '334155' } }, // Slate 700
+      alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
+      border: {
+        bottom: { style: 'medium', color: { rgb: 'C1D200' } }, // Lime Accent Line
+        top: { style: 'thin', color: { rgb: '475569' } },
+        left: { style: 'thin', color: { rgb: '475569' } },
+        right: { style: 'thin', color: { rgb: '475569' } }
+      }
+    },
+    propLabel: {
+      font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '1E293B' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'F1F5F9' } }, // Slate 100
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+      }
+    },
+    propValue: {
+      font: { name: 'Segoe UI', sz: 10, color: { rgb: '0F172A' } },
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+      }
+    },
+    dataCell: {
+      font: { name: 'Segoe UI', sz: 10, color: { rgb: '334155' } },
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+      }
+    },
+    dataCellAlt: {
+      font: { name: 'Segoe UI', sz: 10, color: { rgb: '334155' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } }, // Slate 50 Zebra
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+      }
+    },
+    systemReservation: {
+      font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '859300' } }, // Accent dark lime
+      fill: { patternType: 'solid', fgColor: { rgb: 'F9FED8' } }, // Soft lime highlights
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+      }
+    },
+    bmsReservation: {
+      font: { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '1D4ED8' } }, // Blue accent
+      fill: { patternType: 'solid', fgColor: { rgb: 'EFF6FF' } }, // Soft Blue
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+      }
+    },
+    brandCardHeader: {
+      font: { name: 'Segoe UI', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '0F172A' } }, // Dark Charcoal
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      border: {
+        top: { style: 'medium', color: { rgb: 'C1D200' } }, // Highlighted border
+        left: { style: 'medium', color: { rgb: 'C1D200' } },
+        right: { style: 'medium', color: { rgb: 'C1D200' } }
+      }
+    },
+    brandCardBody: {
+      font: { name: 'Segoe UI', sz: 9.5, color: { rgb: '334155' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } }, // Zebra highlight
+      alignment: { vertical: 'top', horizontal: 'left', wrapText: true, indent: 1 },
+      border: {
+        left: { style: 'medium', color: { rgb: 'C1D200' } },
+        right: { style: 'medium', color: { rgb: 'C1D200' } },
+        bottom: { style: 'medium', color: { rgb: 'C1D200' } }
+      }
+    }
+  };
+
+  const makeCell = (val, styleName) => ({
+    v: val === null || val === undefined ? "" : val,
+    t: typeof val === 'number' ? 'n' : 's',
+    s: STYLES[styleName] || STYLES.dataCell
+  });
+
   try {
     const wb = XLSX.utils.book_new();
 
-    // 1. Summary Sheet
+    // 1. Summary Sheet Setup
     const summaryRows = [
-      ["BACnet Subnet & BBMD Distribution Summary"],
-      [`Generated on: ${new Date().toLocaleDateString()}`],
-      [],
-      ["Subnet Configuration List"],
-      ["Subnet Name", "Network ID / CIDR", "Subnet Mask", "Default Gateway IP", "Usable IP Range", "BBMD IP Address", "BMS Server Placement & Role"],
+      [makeCell("BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", ""],
+      [makeCell(`Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions`, "subtitle"), "", "", "", "", "", ""],
+      [], // spacer
+      [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", ""],
+      [
+        makeCell("Subnet Name", "tableHeader"),
+        makeCell("Network ID / CIDR", "tableHeader"),
+        makeCell("Subnet Mask", "tableHeader"),
+        makeCell("Default Gateway IP", "tableHeader"),
+        makeCell("Usable IP Range", "tableHeader"),
+        makeCell("BBMD IP Address", "tableHeader"),
+        makeCell("BMS Server Placement & Role", "tableHeader")
+      ]
     ];
 
-    plannerState.subnets.forEach(sub => {
+    plannerState.subnets.forEach((sub, offset) => {
       const details = getSubnetDetails(sub.ip, sub.cidr);
       const rangeStr = details ? `${details.firstUsable} - ${details.lastUsable}` : 'N/A';
       const maskStr = details ? details.mask : 'N/A';
@@ -2234,21 +2365,33 @@ function exportPlannerXlsx() {
         } else bmsRole = "Local Subnet Only";
       }
 
+      const rowStyle = (offset % 2 === 0) ? "dataCell" : "dataCellAlt";
+
       summaryRows.push([
-        sub.name,
-        netCidr,
-        maskStr,
-        gatewayIp,
-        rangeStr,
-        bbmdIp,
-        bmsRole
+        makeCell(sub.name, rowStyle),
+        makeCell(netCidr, rowStyle),
+        makeCell(maskStr, rowStyle),
+        makeCell(gatewayIp, rowStyle),
+        makeCell(rangeStr, rowStyle),
+        makeCell(bbmdIp, rowStyle),
+        makeCell(bmsRole, rowStyle)
       ]);
     });
 
     summaryRows.push([]);
     summaryRows.push([]);
-    summaryRows.push(["Global Broadcast Distribution Table (BDT) Schedule"]);
-    summaryRows.push(["BBMD IP Address", "Subnet Mask", "BACnet UDP Port", "Subnet Name Reference"]);
+    
+    // BDT schedule segment
+    const bdtSectionHeaderRow = 7 + plannerState.subnets.length;
+
+    summaryRows.push([makeCell("Global Broadcast Distribution Table (BDT) Schedule", "sectionHeader"), "", "", "", "", "", ""]);
+    summaryRows.push([
+      makeCell("BBMD IP Address", "tableHeader"),
+      makeCell("Subnet Mask", "tableHeader"),
+      makeCell("BACnet UDP Port", "tableHeader"),
+      makeCell("Subnet Name Reference", "tableHeader"),
+      "", "", ""
+    ]);
 
     const bbmds = plannerState.subnets.filter(s => s.bbmdEnabled).map(s => {
       const details = getSubnetDetails(s.ip, s.cidr);
@@ -2260,14 +2403,91 @@ function exportPlannerXlsx() {
     });
 
     if (bbmds.length === 0) {
-      summaryRows.push(["No BBMD routers configured in this network plan.", "", "", ""]);
+      summaryRows.push([
+        makeCell("No BBMD routers configured in this network plan. Broadcasts will not cross subnets.", "dataCell"),
+        "", "", "", "", "", ""
+      ]);
     } else {
-      bbmds.forEach(bbmd => {
-        summaryRows.push([bbmd.ip, bbmd.mask, 47808, bbmd.name]);
+      bbmds.forEach((bbmd, idx) => {
+        const rowStyle = (idx % 2 === 0) ? "dataCell" : "dataCellAlt";
+        summaryRows.push([
+          makeCell(bbmd.ip, rowStyle),
+          makeCell(bbmd.mask, rowStyle),
+          makeCell(47808, rowStyle),
+          makeCell(bbmd.name, rowStyle),
+          "", "", ""
+        ]);
       });
     }
 
+    summaryRows.push([]);
+    summaryRows.push([]);
+    
+    // Brand CTA block calculation
+    const bdtCount = Math.max(bbmds.length, 1);
+    const brandHeaderRow = bdtSectionHeaderRow + 2 + bdtCount + 2;
+    const brandBodyRow = brandHeaderRow + 1;
+
+    summaryRows.push([
+      makeCell("ACE IoT Solutions — OT Network Management & Security Services", "brandCardHeader"),
+      "", "", "", "", "", ""
+    ]);
+    
+    summaryRows.push([
+      makeCell(
+        "Need advanced assistance designing, commissioning, or securing your building network?\n" +
+        "ACE IoT Solutions offers hardware-agnostic software and services to keep your building systems resilient:\n\n" +
+        "• Sentinel: Our secure BACnet connectivity software. Enables vendor-neutral cloud integrations, secure remote engineering connections, and strict port security.\n" +
+        "• Ground Control: Your outsourced OT network management squad. We provide system design validation, remote commissioning checkouts, cybersecurity threat detection, and continuous diagnostics.\n\n" +
+        "Get in touch with our team: visit https://aceiotsolutions.com or email us at info@aceiotsolutions.com",
+        "brandCardBody"
+      ),
+      "", "", "", "", "", ""
+    ]);
+
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    
+    // Widths
+    wsSummary['!cols'] = [
+      { wch: 25 }, // Subnet Name
+      { wch: 20 }, // Network ID / CIDR
+      { wch: 18 }, // Subnet Mask
+      { wch: 18 }, // Default Gateway IP
+      { wch: 28 }, // Usable IP Range
+      { wch: 18 }, // BBMD IP Address
+      { wch: 38 }  // BMS Placement & Role
+    ];
+
+    // Merges
+    const summaryMerges = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // Title
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }, // Subtitle
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } }, // Section 1 Header
+      { s: { r: bdtSectionHeaderRow, c: 0 }, e: { r: bdtSectionHeaderRow, c: 6 } }, // Section 2 Header
+      { s: { r: brandHeaderRow, c: 0 }, e: { r: brandHeaderRow, c: 6 } }, // Brand Header
+      { s: { r: brandBodyRow, c: 0 }, e: { r: brandBodyRow, c: 6 } }  // Brand Body
+    ];
+    
+    if (bbmds.length === 0) {
+      summaryMerges.push({ s: { r: bdtSectionHeaderRow + 2, c: 0 }, e: { r: bdtSectionHeaderRow + 2, c: 6 } });
+    }
+
+    wsSummary['!merges'] = summaryMerges;
+    
+    // Row Heights
+    const summaryRowHeights = [];
+    for (let r = 0; r <= brandBodyRow; r++) {
+      summaryRowHeights.push({ hpt: 20 });
+    }
+    summaryRowHeights[0] = { hpt: 35 };
+    summaryRowHeights[1] = { hpt: 22 };
+    summaryRowHeights[3] = { hpt: 25 };
+    summaryRowHeights[bdtSectionHeaderRow] = { hpt: 25 };
+    summaryRowHeights[brandHeaderRow] = { hpt: 25 };
+    summaryRowHeights[brandBodyRow] = { hpt: 130 }; // Big description height
+    
+    wsSummary['!rows'] = summaryRowHeights;
+
     XLSX.utils.book_append_sheet(wb, wsSummary, "Network Summary");
 
     // 2. Subnet Sheets
@@ -2278,9 +2498,13 @@ function exportPlannerXlsx() {
       const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
       const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : "None";
 
-      subnetRows.push([`Subnet Device Planning Log: ${sub.name}`]);
-      subnetRows.push([]);
-      subnetRows.push(["Subnet Network Details", "", "", "BBMD Broadcast Distribution Table (BDT) Entries"]);
+      subnetRows.push([makeCell(`Subnet Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell(`Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}`, "subtitle"), "", "", "", "", "", "", ""]);
+      subnetRows.push([]); // spacer
+      subnetRows.push([
+        makeCell("Subnet Configuration Details", "sectionHeader"), "", "", 
+        makeCell(sub.bbmdEnabled ? "BBMD Broadcast Distribution Table (BDT)" : "BBMD Routing Disabled", "sectionHeader"), "", "", "", ""
+      ]);
       
       const properties = [
         ["Network IP / CIDR", `${sub.ip}/${sub.cidr}`],
@@ -2292,43 +2516,64 @@ function exportPlannerXlsx() {
       const otherBbmds = bbmds.filter(b => b.ip !== bbmdIp);
 
       for (let i = 0; i < properties.length; i++) {
-        const row = [properties[i][0], properties[i][1], ""];
+        const row = [
+          makeCell(properties[i][0], "propLabel"),
+          makeCell(properties[i][1], "propValue"),
+          makeCell("", "dataCell") // Spacer
+        ];
+
         if (sub.bbmdEnabled) {
           if (i === 0) {
-            row.push("BBMD IP Address");
-            row.push("Subnet Mask");
+            row.push(makeCell("BBMD IP Address", "tableHeader"));
+            row.push(makeCell("Subnet Mask", "tableHeader"));
+            row.push(makeCell("Subnet Name Reference", "tableHeader"));
           } else {
             const bdtEntry = otherBbmds[i - 1];
-            row.push(bdtEntry ? bdtEntry.ip : "");
-            row.push(bdtEntry ? bdtEntry.mask : "");
+            row.push(makeCell(bdtEntry ? bdtEntry.ip : "", "dataCell"));
+            row.push(makeCell(bdtEntry ? bdtEntry.mask : "", "dataCell"));
+            row.push(makeCell(bdtEntry ? bdtEntry.name : "", "dataCell"));
           }
         } else {
           if (i === 0) {
-            row.push("BBMD routing is disabled for this subnet.");
+            row.push(makeCell("This subnet operates locally. Broadcasts do not traverse routers.", "dataCell"));
+            row.push(makeCell("", "dataCell"));
+            row.push(makeCell("", "dataCell"));
+          } else {
+            row.push(makeCell("", "dataCell"));
+            row.push(makeCell("", "dataCell"));
+            row.push(makeCell("", "dataCell"));
           }
         }
         subnetRows.push(row);
       }
 
+      // Add extra BDT rows if necessary
       if (sub.bbmdEnabled && otherBbmds.length > 3) {
         for (let i = 3; i < otherBbmds.length; i++) {
-          subnetRows.push(["", "", "", otherBbmds[i].ip, otherBbmds[i].mask]);
+          subnetRows.push([
+            makeCell("", "dataCell"),
+            makeCell("", "dataCell"),
+            makeCell("", "dataCell"),
+            makeCell(otherBbmds[i].ip, "dataCell"),
+            makeCell(otherBbmds[i].mask, "dataCell"),
+            makeCell(otherBbmds[i].name, "dataCell")
+          ]);
         }
       }
 
       subnetRows.push([]);
       subnetRows.push([]);
 
-      // Device List Header
+      // Device List Table Header
       subnetRows.push([
-        "Planned IP Address", 
-        "IP Assignment / Reservation", 
-        "BACnet Device ID", 
-        "Device Name", 
-        "Vendor", 
-        "Device Type", 
-        "Object Count", 
-        "Location / Description"
+        makeCell("Planned IP Address", "tableHeader"),
+        makeCell("IP Assignment / Reservation", "tableHeader"),
+        makeCell("BACnet Device ID", "tableHeader"),
+        makeCell("Device Name", "tableHeader"),
+        makeCell("Vendor", "tableHeader"),
+        makeCell("Device Type", "tableHeader"),
+        makeCell("Object Count", "tableHeader"),
+        makeCell("Location / Description", "tableHeader")
       ]);
 
       if (details) {
@@ -2340,28 +2585,76 @@ function exportPlannerXlsx() {
           const currentIp = longToIp(currentLong);
 
           let usage = "Available";
+          let cellStyle = (offset % 2 === 0) ? "dataCell" : "dataCellAlt";
+
           if (currentIp === gatewayIp) {
             usage = "Default Gateway";
+            cellStyle = "systemReservation";
           } else if (currentIp === bbmdIp) {
             usage = "BBMD Router Node";
+            cellStyle = "systemReservation";
           } else if (sub.bmsPlaced && currentIp === bmsIp) {
             usage = `BMS Server (${sub.bmsRole.toUpperCase()})`;
+            cellStyle = "bmsReservation";
           }
 
           subnetRows.push([
-            currentIp,
-            usage,
-            "", // Device ID
-            "", // Device Name
-            "", // Vendor
-            "", // Device Type
-            "", // Object Count
-            ""  // Location
+            makeCell(currentIp, cellStyle),
+            makeCell(usage, cellStyle),
+            makeCell("", cellStyle),
+            makeCell("", cellStyle),
+            makeCell("", cellStyle),
+            makeCell("", cellStyle),
+            makeCell("", cellStyle),
+            makeCell("", cellStyle)
           ]);
         }
       }
 
       const wsSubnet = XLSX.utils.aoa_to_sheet(subnetRows);
+      
+      // Column widths
+      wsSubnet['!cols'] = [
+        { wch: 18 }, // IP
+        { wch: 24 }, // Reservation
+        { wch: 16 }, // Device ID
+        { wch: 22 }, // Name
+        { wch: 18 }, // Vendor
+        { wch: 18 }, // Type
+        { wch: 14 }, // Object Count
+        { wch: 28 }  // Location
+      ];
+
+      // Merges
+      const subnetMerges = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Title
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Subtitle
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 1 } }, // Info Section Header
+        { s: { r: 3, c: 3 }, e: { r: 3, c: 5 } }  // BDT Section Header
+      ];
+
+      if (!sub.bbmdEnabled) {
+        subnetMerges.push({ s: { r: 4, c: 3 }, e: { r: 4, c: 5 } });
+        subnetMerges.push({ s: { r: 5, c: 3 }, e: { r: 5, c: 5 } });
+        subnetMerges.push({ s: { r: 6, c: 3 }, e: { r: 6, c: 5 } });
+        subnetMerges.push({ s: { r: 7, c: 3 }, e: { r: 7, c: 5 } });
+      }
+
+      wsSubnet['!merges'] = subnetMerges;
+      
+      // Row Heights
+      const subnetRowHeights = [];
+      const dataHeaderRow = 3 + 4 + (sub.bbmdEnabled && otherBbmds.length > 3 ? otherBbmds.length - 3 : 0) + 2;
+      for (let r = 0; r <= dataHeaderRow; r++) {
+        subnetRowHeights.push({ hpt: 20 });
+      }
+      subnetRowHeights[0] = { hpt: 35 };
+      subnetRowHeights[1] = { hpt: 22 };
+      subnetRowHeights[3] = { hpt: 25 };
+      subnetRowHeights[dataHeaderRow] = { hpt: 25 }; // Table Header
+      
+      wsSubnet['!rows'] = subnetRowHeights;
+
       const sanitizedName = sub.name.replace(/[\\\?\*:\/\[\]]/g, "").substring(0, 30);
       XLSX.utils.book_append_sheet(wb, wsSubnet, sanitizedName);
     });
