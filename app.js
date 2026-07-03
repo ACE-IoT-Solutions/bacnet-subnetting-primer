@@ -1777,7 +1777,7 @@ const plannerState = {
     {
       id: 'sub-3',
       name: 'VAV Floor Controllers',
-      ip: '192.168.3.0',
+      ip: '192.168.4.0',
       cidr: 23,
       gatewayOffset: 1,
       vlan: 30,
@@ -2079,6 +2079,48 @@ function deletePlannerSubnet(id) {
   renderSubnetList();
 }
 
+// Finds the next non-overlapping IP block for a subnet
+function findNextAvailableSubnetBlock(targetSub, cidrVal) {
+  const activeRanges = [];
+  plannerState.subnets.forEach(s => {
+    if (s.id !== targetSub.id) {
+      const details = getSubnetDetails(s.ip, s.cidr);
+      if (details) {
+        activeRanges.push({ start: details.networkLong, end: details.broadcastLong });
+      }
+    }
+  });
+
+  const targetIpLong = ipToLong(targetSub.ip);
+  if (targetIpLong === null) return null;
+
+  const maskLong = (0xffffffff << (32 - cidrVal)) >>> 0;
+  let candidateStart = (targetIpLong & maskLong) >>> 0;
+  const blockSize = (1 << (32 - cidrVal)) >>> 0;
+
+  // Search up to 256 subnet blocks forward
+  for (let step = 0; step < 256; step++) {
+    const candidateEnd = (candidateStart + blockSize - 1) >>> 0;
+    
+    // Check if [candidateStart, candidateEnd] overlaps with any active range
+    let overlaps = false;
+    for (let r = 0; r < activeRanges.length; r++) {
+      if (candidateStart <= activeRanges[r].end && candidateEnd >= activeRanges[r].start) {
+        overlaps = true;
+        break;
+      }
+    }
+
+    if (!overlaps) {
+      return longToIp(candidateStart);
+    }
+    
+    candidateStart = (candidateStart + blockSize) >>> 0;
+  }
+  
+  return null;
+}
+
 // Live previews calculations and alerts
 function updatePlannerPreviews() {
   dom.plannerValidationAlerts.innerHTML = '';
@@ -2112,12 +2154,18 @@ function updatePlannerPreviews() {
             // Check if they share the same VLAN
             if (s1.vlan === s2.vlan) {
               if ((s1.port || 47808) === (s2.port || 47808)) {
-                overlapsErrors.push(`Conflict: Subnet "${s1.name}" and "${s2.name}" overlap in IP range on the same VLAN (VLAN ${s1.vlan || 'default'}) and use the same BACnet port (${s1.port || 47808}). This will cause host IP clashes.`);
+                overlapsErrors.push({
+                  text: `Conflict: Subnet "${s1.name}" and "${s2.name}" overlap in IP range on the same VLAN (VLAN ${s1.vlan || 'default'}) and use the same BACnet port (${s1.port || 47808}). This will cause host IP clashes.`,
+                  targetSub: s2
+                });
               } else {
                 overlapsNotes.push(`Note: Subnets "${s1.name}" and "${s2.name}" share VLAN ${s1.vlan || 'default'} and IP range, but operate on different UDP ports (${s1.port || 47808} vs ${s2.port || 47808}) as separate BACnet networks.`);
               }
             } else {
-              overlapsWarnings.push(`Warning: Subnets "${s1.name}" and "${s2.name}" overlap in IP range but reside on separate VLANs (VLAN ${s1.vlan || 'default'} vs VLAN ${s2.vlan || 'default'}).`);
+              overlapsWarnings.push({
+                text: `Warning: Subnets "${s1.name}" and "${s2.name}" overlap in IP range but reside on separate VLANs (VLAN ${s1.vlan || 'default'} vs VLAN ${s2.vlan || 'default'}).`,
+                targetSub: s2
+              });
             }
           }
         }
@@ -2147,12 +2195,28 @@ function updatePlannerPreviews() {
     addPlannerAlert(err, 'error');
     hasErrors = true;
   });
-  overlapsErrors.forEach(err => {
-    addPlannerAlert(err, 'error');
+  overlapsErrors.forEach(errObj => {
+    const nextFreeIp = findNextAvailableSubnetBlock(errObj.targetSub, errObj.targetSub.cidr);
+    if (nextFreeIp) {
+      addPlannerAlert(errObj.text, 'error', `Auto-Move ${errObj.targetSub.name} to ${nextFreeIp}`, () => {
+        errObj.targetSub.ip = nextFreeIp;
+        renderSubnetList();
+      });
+    } else {
+      addPlannerAlert(errObj.text, 'error');
+    }
     hasErrors = true;
   });
-  overlapsWarnings.forEach(err => {
-    addPlannerAlert(err, 'warning');
+  overlapsWarnings.forEach(errObj => {
+    const nextFreeIp = findNextAvailableSubnetBlock(errObj.targetSub, errObj.targetSub.cidr);
+    if (nextFreeIp) {
+      addPlannerAlert(errObj.text, 'warning', `Auto-Move ${errObj.targetSub.name} to ${nextFreeIp}`, () => {
+        errObj.targetSub.ip = nextFreeIp;
+        renderSubnetList();
+      });
+    } else {
+      addPlannerAlert(errObj.text, 'warning');
+    }
     hasWarnings = true;
   });
   overlapsNotes.forEach(err => {
@@ -2267,9 +2331,14 @@ function updatePlannerPreviews() {
 }
 
 // Append planning warnings/errors
-function addPlannerAlert(text, type) {
+function addPlannerAlert(text, type, actionText = '', actionCallback = null) {
   const alert = document.createElement('div');
   alert.className = `planner-alert ${type}`;
+  alert.style.display = 'flex';
+  alert.style.alignItems = 'center';
+  alert.style.justifyContent = 'space-between';
+  alert.style.gap = '0.5rem';
+  alert.style.width = '100%';
   
   let icon = '';
   if (type === 'error') {
@@ -2280,7 +2349,36 @@ function addPlannerAlert(text, type) {
     icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
   }
   
-  alert.innerHTML = `${icon}<span>${escapeHtml(text)}</span>`;
+  const contentSpan = document.createElement('span');
+  contentSpan.style.display = 'flex';
+  contentSpan.style.alignItems = 'center';
+  contentSpan.style.gap = '0.4rem';
+  contentSpan.style.flex = '1';
+  contentSpan.innerHTML = `${icon}<span>${escapeHtml(text)}</span>`;
+  alert.appendChild(contentSpan);
+
+  if (actionText && actionCallback) {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.style.padding = '0.2rem 0.5rem';
+    btn.style.fontSize = '0.72rem';
+    btn.style.flexShrink = '0';
+    btn.style.background = 'var(--primary)';
+    btn.style.color = '#000';
+    btn.style.border = 'none';
+    btn.style.borderRadius = 'var(--radius-sm)';
+    btn.style.cursor = 'pointer';
+    btn.style.fontWeight = 'bold';
+    btn.style.minWidth = 'auto';
+    btn.style.flex = 'none';
+    btn.innerText = actionText;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      actionCallback();
+    });
+    alert.appendChild(btn);
+  }
+
   dom.plannerValidationAlerts.appendChild(alert);
 }
 
