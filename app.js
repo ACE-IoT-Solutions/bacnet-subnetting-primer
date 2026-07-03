@@ -2218,10 +2218,16 @@ function updatePlannerPreviews() {
   const overlapsErrors = [];
   const overlapsWarnings = [];
   const overlapsNotes = [];
+  const largeSubnetWarnings = [];
   
   plannerState.subnets.forEach(sub => {
     if (!sub.ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) || ipToLong(sub.ip) === null) {
       ipValidationErrors.push(`Subnet "${sub.name}" has an invalid network IP address.`);
+    } else {
+      const details = getSubnetDetails(sub.ip, sub.cidr);
+      if (details && details.numHosts > 500) {
+        largeSubnetWarnings.push(`Warning: Subnet "${sub.name}" has ${details.numHosts} usable IP addresses. Subnets with over 500 IPs are highly susceptible to broadcast storm issues. Consider splitting this into smaller subnets (like /24 or smaller) to contain and manage BACnet broadcast traffic.`);
+      }
     }
   });
 
@@ -2311,6 +2317,10 @@ function updatePlannerPreviews() {
   });
   duplicateVlansInfo.forEach(err => {
     addPlannerAlert(err, 'warning');
+  });
+  largeSubnetWarnings.forEach(err => {
+    addPlannerAlert(err, 'warning');
+    hasWarnings = true;
   });
 
   const enabledBbmds = plannerState.subnets.filter(s => s.bbmdEnabled);
