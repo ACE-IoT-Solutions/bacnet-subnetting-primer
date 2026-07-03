@@ -1,0 +1,7 @@
+node_modules/
+.venv/
+.ruff_cache/
+dist/
+scratch/
+*.xml
+*.py
