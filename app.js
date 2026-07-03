@@ -131,7 +131,16 @@ const dom = {
   splitTextExplanation: document.getElementById('split-text-explanation'),
   traceDstIp: document.getElementById('trace-dst-ip'),
   traceGwIp: document.getElementById('trace-gw-ip'),
-  routingDecisionSteps: document.getElementById('routing-decision-steps')
+  routingDecisionSteps: document.getElementById('routing-decision-steps'),
+
+  // Split Horizon Simulator Elements
+  btnShSymmetric: document.getElementById('btn-sh-symmetric'),
+  btnShSplit: document.getElementById('btn-sh-split'),
+  btnShTriggerB: document.getElementById('btn-sh-trigger-b'),
+  btnShTriggerA: document.getElementById('btn-sh-trigger-a'),
+  splitHorizonSvg: document.getElementById('split-horizon-svg'),
+  edgeShBc: document.getElementById('edge-sh-b-c'),
+  lblShBcText: document.getElementById('lbl-sh-b-c-text')
 };
 
 // Global variables for calculated results
@@ -140,6 +149,17 @@ let state = {
   devB: null,
   relation: null,
   isAnimating: false
+};
+
+let shState = {
+  mode: 'symmetric',
+  isAnimating: false
+};
+
+const shCoords = {
+  A: { x: 350, y: 50 },
+  B: { x: 180, y: 170 },
+  C: { x: 520, y: 170 }
 };
 
 // Node Coordinates in Simulator SVG (x, y)
@@ -222,6 +242,12 @@ function setupEventListeners() {
   dom.btnSimUnicastAB.addEventListener('click', () => triggerSimulation('unicast-a-b'));
   dom.btnSimUnicastBA.addEventListener('click', () => triggerSimulation('unicast-b-a'));
   dom.bbmdEnableChk.addEventListener('change', () => calculateAndRepaint());
+
+  // Split Horizon Simulator Triggers
+  dom.btnShSymmetric.addEventListener('click', () => setSplitHorizonSimMode('symmetric'));
+  dom.btnShSplit.addEventListener('click', () => setSplitHorizonSimMode('split'));
+  dom.btnShTriggerA.addEventListener('click', () => triggerSplitHorizonSim('A'));
+  dom.btnShTriggerB.addEventListener('click', () => triggerSplitHorizonSim('B'));
 
   // Primer OSI toggle
   dom.btnOsiIpLocalUc.addEventListener('click', () => selectOsiTab('ip-local-uc'));
@@ -1169,7 +1195,111 @@ async function triggerSimulation(type) {
   }
 }
 
-function animatePacket(start, end, labelText, type = 'primary') {
+// Split Horizon Simulator Mode Switcher
+function setSplitHorizonSimMode(mode) {
+  if (shState.isAnimating) return;
+  shState.mode = mode;
+  
+  if (mode === 'symmetric') {
+    dom.btnShSymmetric.className = 'btn btn-primary';
+    dom.btnShSymmetric.style.background = 'var(--primary)';
+    dom.btnShSymmetric.style.color = '#000';
+    dom.btnShSymmetric.style.fontWeight = 'bold';
+    
+    dom.btnShSplit.className = 'btn btn-secondary';
+    dom.btnShSplit.style.background = '';
+    dom.btnShSplit.style.color = '';
+    dom.btnShSplit.style.fontWeight = '';
+
+    dom.edgeShBc.setAttribute('stroke', 'var(--primary)');
+    dom.edgeShBc.setAttribute('stroke-dasharray', '0');
+    
+    dom.lblShBcText.textContent = 'B-C Routing Active';
+    dom.lblShBcText.setAttribute('fill', 'var(--primary)');
+    
+    logToConsole(`[BDT Config] Symmetrical routing loaded. All BBMDs cross-register in BDT tables.`, 'success');
+  } else {
+    dom.btnShSplit.className = 'btn btn-primary';
+    dom.btnShSplit.style.background = 'var(--primary)';
+    dom.btnShSplit.style.color = '#000';
+    dom.btnShSplit.style.fontWeight = 'bold';
+    
+    dom.btnShSymmetric.className = 'btn btn-secondary';
+    dom.btnShSymmetric.style.background = '';
+    dom.btnShSymmetric.style.color = '';
+    dom.btnShSymmetric.style.fontWeight = '';
+
+    dom.edgeShBc.setAttribute('stroke', 'rgba(255,255,255,0.15)');
+    dom.edgeShBc.setAttribute('stroke-dasharray', '4 4');
+    
+    dom.lblShBcText.textContent = 'B-C Isolated (Split)';
+    dom.lblShBcText.setAttribute('fill', 'var(--text-muted)');
+    
+    logToConsole(`[BDT Config] Split Horizon active. BBMD B & BBMD C BDT tables partitioned.`, 'warning');
+  }
+}
+
+// Split Horizon Broadcast Transmission Animation
+async function triggerSplitHorizonSim(source) {
+  if (shState.isAnimating) return;
+  shState.isAnimating = true;
+  
+  dom.btnShTriggerA.disabled = true;
+  dom.btnShTriggerB.disabled = true;
+  dom.btnShSymmetric.disabled = true;
+  dom.btnShSplit.disabled = true;
+
+  try {
+    logToConsole(`--- Starting Split Horizon simulation [Source: BBMD ${source}] ---`, 'system');
+    
+    if (source === 'A') {
+      logToConsole(`[BMS A] Broadcaster triggers global discover. Tunnelling to registered BDT partners...`, 'info');
+      logToConsole(`[BMS A] BDT contains BBMD B & BBMD C. Sending parallel unicast tunnels...`, 'info');
+      
+      await Promise.all([
+        animatePacket(shCoords.A, shCoords.B, 'BVLL Tunnel', 'primary', dom.splitHorizonSvg),
+        animatePacket(shCoords.A, shCoords.C, 'BVLL Tunnel', 'primary', dom.splitHorizonSvg)
+      ]);
+      
+      logToConsole(`[BBMD B] Received unicast tunnel from BMS A. Relaying broadcast to Tenant 1.`, 'success');
+      logToConsole(`[BBMD C] Received unicast tunnel from BMS A. Relaying broadcast to Tenant 2.`, 'success');
+    } 
+    else if (source === 'B') {
+      logToConsole(`[Tenant 1 B] Local controller initiates discovery. Relaying to BBMD B...`, 'info');
+      
+      if (shState.mode === 'symmetric') {
+        logToConsole(`[BBMD B] Symmetric mode: BDT registers BMS A & Tenant 2 C.`, 'info');
+        logToConsole(`[BBMD B] Tunneling parallel unicasts to BBMD A and BBMD C...`, 'info');
+        
+        await Promise.all([
+          animatePacket(shCoords.B, shCoords.A, 'BVLL Tunnel', 'primary', dom.splitHorizonSvg),
+          animatePacket(shCoords.B, shCoords.C, 'BVLL Tunnel', 'primary', dom.splitHorizonSvg)
+        ]);
+        
+        logToConsole(`[BMS A] Received tunnel from Tenant 1. Broadcast relayed to BMS segment.`, 'success');
+        logToConsole(`[BBMD C] Received tunnel from Tenant 1. Broadcast relayed to Tenant 2 segment.`, 'success');
+      } else {
+        logToConsole(`[BBMD B] Split Horizon mode: BDT registers BMS A *only* (Tenant 2 C is excluded).`, 'warning');
+        logToConsole(`[BBMD B] Tunneling unicast *only* to BBMD A...`, 'info');
+        
+        await animatePacket(shCoords.B, shCoords.A, 'BVLL Tunnel', 'primary', dom.splitHorizonSvg);
+        
+        logToConsole(`[BMS A] Received tunnel from Tenant 1. Broadcast relayed to BMS segment.`, 'success');
+        logToConsole(`[Tenant 2 C] Isolated: BBMD C never receives Tenant 1 broadcasts. Broadcast contained!`, 'success');
+      }
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    shState.isAnimating = false;
+    dom.btnShTriggerA.disabled = false;
+    dom.btnShTriggerB.disabled = false;
+    dom.btnShSymmetric.disabled = false;
+    dom.btnShSplit.disabled = false;
+  }
+}
+
+function animatePacket(start, end, labelText, type = 'primary', targetSvg = dom.simSvg) {
   return new Promise((resolve) => {
     // Create elements dynamically to support parallel animations
     const packet = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -1186,8 +1316,10 @@ function animatePacket(start, end, labelText, type = 'primary') {
     label.textContent = labelText;
     label.style.opacity = 1;
 
-    dom.simSvg.appendChild(packet);
-    dom.simSvg.appendChild(label);
+    if (targetSvg) {
+      targetSvg.appendChild(packet);
+      targetSvg.appendChild(label);
+    }
 
     const duration = 750; // ms
     const startTime = performance.now();

@@ -638,6 +638,77 @@
             <p style="font-size: 0.8rem; margin: 0; color: var(--text-secondary); line-height: 1.45;">
               <strong>Why this works:</strong> BBMD B and BBMD C only list BBMD A in their BDTs. As a result, Tenant 1 broadcasts are only tunneled to the BMS, never leaking to Tenant 2. Because BBMD A registers both remote routers, bidirectional communications are maintained with the BMS on both sides.
             </p>
+
+            <!-- Interactive Split Horizon Diagram -->
+            <div class="bbmd-diagram-wrapper" style="margin-top: 1.25rem;">
+              <h4 class="primer-subheading" style="font-size: 0.92rem; margin-bottom: 0.5rem; color: #fff; font-weight: 600;">Interactive Split Horizon BDT Simulator</h4>
+              <p style="font-size: 0.82rem; margin-bottom: 0.75rem; color: var(--text-secondary);">Toggle BDT configurations to see how traffic is isolated between Tenant subnets.</p>
+              
+              <!-- Toggle controls -->
+              <div style="display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 0.75rem;">
+                <button class="btn btn-primary" id="btn-sh-symmetric" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; min-width: auto; font-weight: bold; background: var(--primary); color: #000;">Symmetric BDTs</button>
+                <button class="btn btn-secondary" id="btn-sh-split" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; min-width: auto;">Split Horizon BDTs</button>
+              </div>
+              
+              <div id="split-horizon-diagram-container" style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; position: relative;">
+                <svg id="split-horizon-svg" class="diagram-canvas" viewBox="0 0 700 240" width="100%" style="display: block;">
+                  <!-- Defs for arrow heads -->
+                  <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)"></path>
+                    </marker>
+                    <marker id="arrow-secondary" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.15)"></path>
+                    </marker>
+                  </defs>
+
+                  <!-- Edges (BDT lines) -->
+                  <!-- BMS to Tenant 1 -->
+                  <line id="edge-sh-a-b" x1="350" y1="50" x2="180" y2="170" stroke="var(--primary)" stroke-width="2" style="transition: stroke 0.3s, stroke-dasharray 0.3s;"></line>
+                  <!-- BMS to Tenant 2 -->
+                  <line id="edge-sh-a-c" x1="350" y1="50" x2="520" y2="170" stroke="var(--primary)" stroke-width="2" style="transition: stroke 0.3s, stroke-dasharray 0.3s;"></line>
+                  <!-- Tenant 1 to Tenant 2 -->
+                  <line id="edge-sh-b-c" x1="180" y1="170" x2="520" y2="170" stroke="var(--primary)" stroke-width="2" style="transition: stroke 0.3s, stroke-dasharray 0.3s;"></line>
+
+                  <!-- Node BMS Subnet (A) -->
+                  <g class="node-group" transform="translate(350, 50)">
+                    <circle r="25" fill="#1e293b" stroke="#cbd5e1" stroke-width="2"></circle>
+                    <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="600" text-anchor="middle">BMS A</text>
+                    <text y="38" font-family="Inter" font-size="9" fill="var(--text-secondary)" text-anchor="middle">192.168.1.10</text>
+                  </g>
+
+                  <!-- Node Tenant 1 Subnet (B) -->
+                  <g class="node-group" transform="translate(180, 170)">
+                    <circle r="25" fill="#1e293b" stroke="var(--primary)" stroke-width="2"></circle>
+                    <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="600" text-anchor="middle">Tenant 1 B</text>
+                    <text y="38" font-family="Inter" font-size="9" fill="var(--text-secondary)" text-anchor="middle">192.168.2.10</text>
+                  </g>
+
+                  <!-- Node Tenant 2 Subnet (C) -->
+                  <g class="node-group" transform="translate(520, 170)">
+                    <circle r="25" fill="#1e293b" stroke="var(--secondary)" stroke-width="2"></circle>
+                    <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="600" text-anchor="middle">Tenant 2 C</text>
+                    <text y="38" font-family="Inter" font-size="9" fill="var(--text-secondary)" text-anchor="middle">192.168.3.10</text>
+                  </g>
+                  
+                  <!-- Overlay text indicator for link B-C -->
+                  <g id="lbl-sh-b-c" transform="translate(350, 170)">
+                    <rect x="-65" y="-9" width="130" height="18" rx="4" fill="#0f172a" stroke="rgba(255,255,255,0.08)"></rect>
+                    <text id="lbl-sh-b-c-text" font-family="Inter" font-size="8" fill="var(--primary)" font-weight="bold" text-anchor="middle" y="3">B-C Routing Active</text>
+                  </g>
+                </svg>
+              </div>
+              
+              <!-- Interactive simulation trigger buttons -->
+              <div style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 0.75rem;">
+                <button class="btn btn-secondary" id="btn-sh-trigger-b" style="padding: 0.4rem 0.8rem; font-size: 0.78rem; min-width: auto;">
+                  Broadcast from Tenant 1 (B)
+                </button>
+                <button class="btn btn-secondary" id="btn-sh-trigger-a" style="padding: 0.4rem 0.8rem; font-size: 0.78rem; min-width: auto;">
+                  Broadcast from BMS (A)
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Interactive BBMD Simulation Diagram -->
