@@ -82,11 +82,6 @@ const dom = {
   wireSwAToRouter: document.getElementById('wire-swA-to-router'),
   wireSwBToRouter: document.getElementById('wire-swB-to-router'),
 
-  // Packet animation elements
-  simPacket: document.getElementById('sim-packet'),
-  simPacketLbl: document.getElementById('sim-packet-lbl'),
-  bbmdPacket: document.getElementById('bbmd-packet'),
-  bbmdPacketLbl: document.getElementById('bbmd-packet-lbl'),
 
   // Simulator Actions & Console
   btnSimBcastA: document.getElementById('btn-sim-bcast-a'),
@@ -1147,11 +1142,15 @@ function animatePacket(start, end, labelText, type = 'primary') {
     // Create elements dynamically to support parallel animations
     const packet = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     packet.setAttribute('r', '7');
+    packet.setAttribute('cx', start.x);
+    packet.setAttribute('cy', start.y);
     packet.className.baseVal = type === 'secondary' ? 'packet-pulse secondary' : 'packet-pulse';
     packet.style.opacity = 1;
 
     const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     label.className.baseVal = 'packet-label';
+    label.setAttribute('x', start.x);
+    label.setAttribute('y', start.y - 12);
     label.textContent = labelText;
     label.style.opacity = 1;
 
@@ -1337,11 +1336,15 @@ async function runPrimerBbmdflow(bbmdEnabled) {
       // Create elements dynamically to support parallel animations
       const packet = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       packet.setAttribute('r', '7');
+      packet.setAttribute('cx', start.x);
+      packet.setAttribute('cy', start.y);
       packet.className.baseVal = type === 'secondary' ? 'packet-pulse secondary' : 'packet-pulse';
       packet.style.opacity = 1;
 
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.className.baseVal = 'packet-label';
+      label.setAttribute('x', start.x);
+      label.setAttribute('y', start.y - 10);
       label.textContent = text;
       label.style.opacity = 1;
 
