@@ -14,14 +14,26 @@ import {
   analyzeRelationship,
   toBinaryString
 } from './calculator.js';
+import * as XLSX from 'xlsx';
 
 // DOM Cache
 const dom = {
   // Tabs
   tabBtnCalculator: document.getElementById('tab-btn-calculator'),
   tabBtnPrimer: document.getElementById('tab-btn-primer'),
+  tabBtnPlanner: document.getElementById('tab-btn-planner'),
   pageCalculator: document.getElementById('page-calculator'),
   pagePrimer: document.getElementById('page-primer'),
+  pagePlanner: document.getElementById('page-planner'),
+
+  // Planner
+  btnPlannerAddSubnet: document.getElementById('btn-planner-add-subnet'),
+  plannerSubnetsList: document.getElementById('planner-subnets-list'),
+  plannerValidationAlerts: document.getElementById('planner-validation-alerts'),
+  plannerPreviewBmsStatus: document.getElementById('planner-preview-bms-status'),
+  plannerPreviewBdt: document.getElementById('planner-preview-bdt'),
+  btnPlannerExportXlsx: document.getElementById('btn-planner-export-xlsx'),
+  plannerPreviewSheetsStructure: document.getElementById('planner-preview-sheets-structure'),
 
   // Inputs
   presetSelect: document.getElementById('preset-select'),
@@ -175,6 +187,11 @@ function setupEventListeners() {
   // Tab switches
   dom.tabBtnCalculator.addEventListener('click', () => switchTab('calculator'));
   dom.tabBtnPrimer.addEventListener('click', () => switchTab('primer'));
+  dom.tabBtnPlanner.addEventListener('click', () => switchTab('planner'));
+
+  // Planner Event Listeners
+  dom.btnPlannerAddSubnet.addEventListener('click', addPlannerSubnet);
+  dom.btnPlannerExportXlsx.addEventListener('click', exportPlannerXlsx);
 
   // Input changes
   dom.devAIp.addEventListener('input', () => handleInputChange('devA'));
@@ -230,16 +247,24 @@ function setupEventListeners() {
 
 // Switch between App Tabs
 function switchTab(target) {
+  dom.tabBtnCalculator.classList.remove('active');
+  dom.tabBtnPrimer.classList.remove('active');
+  dom.tabBtnPlanner.classList.remove('active');
+  
+  dom.pageCalculator.classList.remove('active');
+  dom.pagePrimer.classList.remove('active');
+  dom.pagePlanner.classList.remove('active');
+
   if (target === 'calculator') {
     dom.tabBtnCalculator.classList.add('active');
-    dom.tabBtnPrimer.classList.remove('active');
     dom.pageCalculator.classList.add('active');
-    dom.pagePrimer.classList.remove('active');
-  } else {
-    dom.tabBtnCalculator.classList.remove('active');
+  } else if (target === 'primer') {
     dom.tabBtnPrimer.classList.add('active');
-    dom.pageCalculator.classList.remove('active');
     dom.pagePrimer.classList.add('active');
+  } else if (target === 'planner') {
+    dom.tabBtnPlanner.classList.add('active');
+    dom.pagePlanner.classList.add('active');
+    renderPlanner();
   }
 }
 
@@ -1712,4 +1737,640 @@ function getBbmdConfig() {
     aBDTContainsB,
     bBDTContainsA
   };
+}
+
+// ============================================================================
+// NETWORK PLANNER MODULE
+// ============================================================================
+
+// Global Planner State
+const plannerState = {
+  subnets: [
+    {
+      id: 'sub-1',
+      name: 'Core BMS Subnet',
+      ip: '192.168.1.0',
+      cidr: 24,
+      gatewayOffset: 1,
+      bbmdEnabled: true,
+      bbmdOffset: 10,
+      bmsPlaced: true,
+      bmsRole: 'bbmd',
+      fdrTargetSubnetId: ''
+    },
+    {
+      id: 'sub-2',
+      name: 'Chiller & Boiler Plant',
+      ip: '192.168.2.0',
+      cidr: 24,
+      gatewayOffset: 1,
+      bbmdEnabled: true,
+      bbmdOffset: 10,
+      bmsPlaced: false,
+      bmsRole: 'none',
+      fdrTargetSubnetId: ''
+    },
+    {
+      id: 'sub-3',
+      name: 'VAV Floor Controllers',
+      ip: '192.168.3.0',
+      cidr: 23,
+      gatewayOffset: 1,
+      bbmdEnabled: false,
+      bbmdOffset: 10,
+      bmsPlaced: false,
+      bmsRole: 'none',
+      fdrTargetSubnetId: ''
+    }
+  ]
+};
+
+// Get IP by host offset inside network range
+function getOffsetIp(networkIp, cidr, offset) {
+  const details = getSubnetDetails(networkIp, cidr);
+  if (!details) return '';
+  const targetLong = (details.networkLong + offset) >>> 0;
+  if (targetLong > details.broadcastLong) return '';
+  return longToIp(targetLong);
+}
+
+// Render the entire planner page
+function renderPlanner() {
+  renderSubnetList();
+}
+
+// Render cards list
+function renderSubnetList() {
+  dom.plannerSubnetsList.innerHTML = '';
+  
+  plannerState.subnets.forEach((sub) => {
+    const card = document.createElement('div');
+    card.className = 'planner-subnet-card';
+    card.dataset.id = sub.id;
+    
+    // FDR Target Subnet options
+    const otherBbmdSubnets = plannerState.subnets.filter(s => s.id !== sub.id && s.bbmdEnabled);
+    let fdrSelectHtml = `<select class="planner-fdr-target" style="width: 100%; margin-top: 0.25rem; padding: 0.3rem; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">`;
+    if (otherBbmdSubnets.length === 0) {
+      fdrSelectHtml += `<option value="">-- No BBMDs Available --</option>`;
+    } else {
+      otherBbmdSubnets.forEach(s => {
+        const selected = s.id === sub.fdrTargetSubnetId ? 'selected' : '';
+        fdrSelectHtml += `<option value="${s.id}" ${selected}>${escapeHtml(s.name)} (${s.ip})</option>`;
+      });
+    }
+    fdrSelectHtml += `</select>`;
+
+    // CIDR options
+    let cidrOptionsHtml = '';
+    for (let c = 30; c >= 16; c--) {
+      const selected = c === sub.cidr ? 'selected' : '';
+      cidrOptionsHtml += `<option value="${c}" ${selected}>/${c}</option>`;
+    }
+
+    const gatewayIp = getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset);
+    const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : 'N/A';
+    const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : 'N/A';
+
+    card.innerHTML = `
+      <div class="planner-card-header">
+        <input type="text" class="planner-subnet-name" value="${escapeHtml(sub.name)}" style="font-family: var(--font-heading); font-weight: bold; font-size: 1rem; border: none; background: transparent; color: #fff; width: 80%; padding: 0.2rem; border-bottom: 1px dashed transparent;" placeholder="Subnet Name" onfocus="this.style.borderBottom='1px dashed var(--primary)'" onblur="this.style.borderBottom='1px dashed transparent'">
+        <button class="planner-btn-delete" title="Delete Subnet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </button>
+      </div>
+      
+      <div class="planner-card-grid">
+        <!-- Left Column: IP Configuration -->
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet Network IP & Mask</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="text" class="planner-subnet-ip" value="${sub.ip}" style="flex: 2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);" placeholder="e.g. 192.168.1.0">
+              <select class="planner-subnet-cidr" style="flex: 1; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
+                ${cidrOptionsHtml}
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Gateway Host Offset (.${sub.gatewayOffset})</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="number" class="planner-subnet-gateway-offset" value="${sub.gatewayOffset}" min="1" max="254" style="width: 70px; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
+              <span style="font-size: 0.8rem; color: var(--text-secondary);">IP: <strong style="color: #fff;">${gatewayIp || 'Invalid'}</strong></span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Right Column: BACnet Configuration -->
+        <div style="display: flex; flex-direction: column; gap: 0.6rem; border-left: 1px solid rgba(255, 255, 255, 0.05); padding-left: 1rem;">
+          <!-- BBMD configuration -->
+          <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer; margin: 0;">
+            <input type="checkbox" class="planner-bbmd-chk" ${sub.bbmdEnabled ? 'checked' : ''}>
+            Enable BBMD Router
+          </label>
+          
+          <div class="planner-bbmd-details" style="display: ${sub.bbmdEnabled ? 'block' : 'none'}; margin-left: 1.25rem;">
+            <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">BBMD Host Offset (.${sub.bbmdOffset})</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="number" class="planner-bbmd-offset" value="${sub.bbmdOffset}" min="1" max="254" style="width: 70px; padding: 0.25rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.8rem;">
+              <span style="font-size: 0.75rem; color: var(--text-secondary);">IP: <strong style="color: #fff;">${bbmdIp}</strong></span>
+            </div>
+          </div>
+          
+          <!-- BMS Server Configuration -->
+          <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer; margin: 0.25rem 0 0 0;">
+            <input type="checkbox" class="planner-bms-chk" ${sub.bmsPlaced ? 'checked' : ''}>
+            Host BMS Server here
+          </label>
+          
+          <div class="planner-bms-details" style="display: ${sub.bmsPlaced ? 'block' : 'none'}; margin-left: 1.25rem; margin-top: 0.2rem;">
+            <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">BMS IP: <strong style="color: #fff;">${bmsIp}</strong> (.20)</span>
+            
+            <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.15rem;">BMS Network Role:</label>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem;">
+              <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                <input type="radio" name="bms-role-${sub.id}" class="planner-bms-role" value="bbmd" ${sub.bmsRole === 'bbmd' ? 'checked' : ''} ${!sub.bbmdEnabled ? 'disabled' : ''}>
+                Participate as local BBMD
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                <input type="radio" name="bms-role-${sub.id}" class="planner-bms-role" value="fdr" ${sub.bmsRole === 'fdr' ? 'checked' : ''}>
+                Register via FDR to remote BBMD
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                <input type="radio" name="bms-role-${sub.id}" class="planner-bms-role" value="none" ${sub.bmsRole === 'none' ? 'checked' : ''}>
+                Local subnet only (No router traversal)
+              </label>
+            </div>
+            
+            <div class="planner-fdr-target-panel" style="display: ${sub.bmsRole === 'fdr' ? 'block' : 'none'}; margin-top: 0.4rem;">
+              <label style="font-size: 0.7rem; color: var(--text-muted); display: block;">Select Target Subnet BBMD:</label>
+              ${fdrSelectHtml}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Real-time event bindings
+    const nameInput = card.querySelector('.planner-subnet-name');
+    nameInput.addEventListener('input', () => {
+      sub.name = nameInput.value;
+      updatePlannerPreviews();
+    });
+
+    const ipInput = card.querySelector('.planner-subnet-ip');
+    ipInput.addEventListener('input', () => {
+      sub.ip = ipInput.value;
+      updatePlannerPreviews();
+    });
+
+    const cidrSelect = card.querySelector('.planner-subnet-cidr');
+    cidrSelect.addEventListener('change', () => {
+      sub.cidr = parseInt(cidrSelect.value);
+      updatePlannerPreviews();
+    });
+
+    const gwOffsetInput = card.querySelector('.planner-subnet-gateway-offset');
+    gwOffsetInput.addEventListener('input', () => {
+      sub.gatewayOffset = parseInt(gwOffsetInput.value) || 1;
+      updatePlannerPreviews();
+    });
+
+    const bbmdChk = card.querySelector('.planner-bbmd-chk');
+    bbmdChk.addEventListener('change', () => {
+      sub.bbmdEnabled = bbmdChk.checked;
+      if (!sub.bbmdEnabled && sub.bmsRole === 'bbmd') {
+        sub.bmsRole = 'none';
+      }
+      renderSubnetList();
+    });
+
+    const bbmdOffsetInput = card.querySelector('.planner-bbmd-offset');
+    if (bbmdOffsetInput) {
+      bbmdOffsetInput.addEventListener('input', () => {
+        sub.bbmdOffset = parseInt(bbmdOffsetInput.value) || 10;
+        updatePlannerPreviews();
+      });
+    }
+
+    const bmsChk = card.querySelector('.planner-bms-chk');
+    bmsChk.addEventListener('change', () => {
+      sub.bmsPlaced = bmsChk.checked;
+      if (sub.bmsPlaced) {
+        plannerState.subnets.forEach(s => {
+          if (s.id !== sub.id) s.bmsPlaced = false;
+        });
+      }
+      renderSubnetList();
+    });
+
+    const bmsRoles = card.querySelectorAll('.planner-bms-role');
+    bmsRoles.forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (radio.checked) {
+          sub.bmsRole = radio.value;
+          renderSubnetList();
+        }
+      });
+    });
+
+    const fdrTargetSelect = card.querySelector('.planner-fdr-target');
+    if (fdrTargetSelect) {
+      fdrTargetSelect.addEventListener('change', () => {
+        sub.fdrTargetSubnetId = fdrTargetSelect.value;
+        updatePlannerPreviews();
+      });
+    }
+
+    card.querySelector('.planner-btn-delete').addEventListener('click', () => {
+      deletePlannerSubnet(sub.id);
+    });
+
+    dom.plannerSubnetsList.appendChild(card);
+  });
+  
+  updatePlannerPreviews();
+}
+
+// Add a new planning subnet
+function addPlannerSubnet() {
+  const existingOctets = plannerState.subnets.map(s => {
+    const parts = s.ip.split('.');
+    return parts.length === 4 ? parseInt(parts[2]) : 0;
+  });
+  
+  let nextOctet = 1;
+  while (existingOctets.includes(nextOctet)) {
+    nextOctet++;
+  }
+  
+  const newId = 'sub-' + Math.random().toString(36).substr(2, 9);
+  plannerState.subnets.push({
+    id: newId,
+    name: `New Subnet ${nextOctet}`,
+    ip: `192.168.${nextOctet}.0`,
+    cidr: 24,
+    gatewayOffset: 1,
+    bbmdEnabled: false,
+    bbmdOffset: 10,
+    bmsPlaced: false,
+    bmsRole: 'none',
+    fdrTargetSubnetId: ''
+  });
+  
+  renderSubnetList();
+}
+
+// Delete subnet from planner
+function deletePlannerSubnet(id) {
+  plannerState.subnets = plannerState.subnets.filter(s => s.id !== id);
+  plannerState.subnets.forEach(s => {
+    if (s.fdrTargetSubnetId === id) {
+      s.fdrTargetSubnetId = '';
+    }
+  });
+  renderSubnetList();
+}
+
+// Live previews calculations and alerts
+function updatePlannerPreviews() {
+  dom.plannerValidationAlerts.innerHTML = '';
+  let hasErrors = false;
+  let hasWarnings = false;
+
+  const ipValidationErrors = [];
+  const overlaps = [];
+  
+  plannerState.subnets.forEach(sub => {
+    if (!sub.ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) || ipToLong(sub.ip) === null) {
+      ipValidationErrors.push(`Subnet "${sub.name}" has an invalid network IP address.`);
+    }
+  });
+
+  if (ipValidationErrors.length === 0) {
+    for (let i = 0; i < plannerState.subnets.length; i++) {
+      for (let j = i + 1; j < plannerState.subnets.length; j++) {
+        const s1 = plannerState.subnets[i];
+        const s2 = plannerState.subnets[j];
+        const d1 = getSubnetDetails(s1.ip, s1.cidr);
+        const d2 = getSubnetDetails(s2.ip, s2.cidr);
+        if (d1 && d2) {
+          const start1 = d1.networkLong;
+          const end1 = d1.broadcastLong;
+          const start2 = d2.networkLong;
+          const end2 = d2.broadcastLong;
+          if (start1 <= end2 && start2 <= end1) {
+            overlaps.push(`Conflict: Subnet "${s1.name}" (${s1.ip}/${s1.cidr}) and Subnet "${s2.name}" (${s2.ip}/${s2.cidr}) overlap!`);
+          }
+        }
+      }
+    }
+  }
+
+  ipValidationErrors.forEach(err => {
+    addPlannerAlert(err, 'error');
+    hasErrors = true;
+  });
+  overlaps.forEach(err => {
+    addPlannerAlert(err, 'error');
+    hasErrors = true;
+  });
+
+  const enabledBbmds = plannerState.subnets.filter(s => s.bbmdEnabled);
+  
+  if (plannerState.subnets.length > 1 && enabledBbmds.length === 0) {
+    addPlannerAlert('Warning: No BBMDs are enabled. Discovery broadcasts cannot cross subnets.', 'warning');
+    hasWarnings = true;
+  } else if (plannerState.subnets.length > 1 && enabledBbmds.length === 1) {
+    const isolatedSubnets = plannerState.subnets.filter(s => !s.bbmdEnabled && (!s.bmsPlaced || s.bmsRole !== 'fdr'));
+    if (isolatedSubnets.length > 0) {
+      addPlannerAlert('Warning: Isolated subnets exist. They cannot communicate unless BBMD or FDR is configured.', 'warning');
+      hasWarnings = true;
+    }
+  }
+
+  const bmsSubnet = plannerState.subnets.find(s => s.bmsPlaced);
+  if (bmsSubnet) {
+    if (bmsSubnet.bmsRole === 'fdr') {
+      if (!bmsSubnet.fdrTargetSubnetId) {
+        addPlannerAlert('Error: BMS Server configured for FDR but no target BBMD subnet selected.', 'error');
+        hasErrors = true;
+      } else {
+        const targetSubnet = plannerState.subnets.find(s => s.id === bmsSubnet.fdrTargetSubnetId);
+        if (!targetSubnet || !targetSubnet.bbmdEnabled) {
+          addPlannerAlert(`Error: BMS FDR target subnet "${targetSubnet ? targetSubnet.name : 'Unknown'}" does not have BBMD enabled.`, 'error');
+          hasErrors = true;
+        }
+      }
+    }
+  } else if (plannerState.subnets.length > 0) {
+    addPlannerAlert('Info: No BMS Server is currently defined in the network plan.', 'warning');
+    hasWarnings = true;
+  }
+
+  if (!hasErrors && !hasWarnings && plannerState.subnets.length > 0) {
+    addPlannerAlert('Symmetrical BBMD routing & network configurations valid.', 'success');
+  }
+
+  // BMS Server Info Box
+  if (!bmsSubnet) {
+    dom.plannerPreviewBmsStatus.innerHTML = '<span style="color: var(--text-muted);">Not configured</span>';
+  } else {
+    const bmsIp = getOffsetIp(bmsSubnet.ip, bmsSubnet.cidr, 20);
+    let roleText = '';
+    if (bmsSubnet.bmsRole === 'bbmd') {
+      roleText = 'participating as local BBMD router node';
+    } else if (bmsSubnet.bmsRole === 'fdr') {
+      const targetSub = plannerState.subnets.find(s => s.id === bmsSubnet.fdrTargetSubnetId);
+      const targetIp = targetSub ? getOffsetIp(targetSub.ip, targetSub.cidr, targetSub.bbmdOffset) : 'N/A';
+      roleText = `registered via FDR to remote BBMD at <strong style="color: var(--primary);">${targetIp}</strong>`;
+    } else {
+      roleText = 'confined to local subnet only (no routing)';
+    }
+    dom.plannerPreviewBmsStatus.innerHTML = `
+      Hosted on Subnet <strong style="color: #fff;">${escapeHtml(bmsSubnet.name)}</strong><br>
+      IP Allocation: <strong style="color: #fff;">${bmsIp}</strong> (.20)<br>
+      Role: <span style="color: var(--secondary);">${roleText}</span>
+    `;
+  }
+
+  // BDT Schedule Box
+  if (enabledBbmds.length === 0) {
+    dom.plannerPreviewBdt.innerHTML = '<span style="color: var(--text-muted);">No BBMDs active. BDT is empty.</span>';
+  } else {
+    let html = '';
+    enabledBbmds.forEach(sub => {
+      const selfIp = getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset);
+      const otherIps = enabledBbmds
+        .filter(s => s.id !== sub.id)
+        .map(s => getOffsetIp(s.ip, s.cidr, s.bbmdOffset));
+        
+      html += `<div style="margin-bottom: 0.5rem; padding-bottom: 0.4rem; border-bottom: 1px dashed rgba(255,255,255,0.05);">`;
+      html += `<strong style="color: var(--primary);">${escapeHtml(sub.name)} BBMD (${selfIp})</strong><br>`;
+      if (otherIps.length === 0) {
+        html += `<span style="color: var(--text-muted); font-size: 0.75rem;">BDT Table: Empty (No other BBMDs)</span>`;
+      } else {
+        html += `<span style="font-size: 0.75rem; color: var(--text-secondary);">BDT Entries: [ ${otherIps.join(', ')} ]</span>`;
+      }
+      html += `</div>`;
+    });
+    dom.plannerPreviewBdt.innerHTML = html;
+  }
+
+  // Live Structure Box
+  let structureHtml = '';
+  structureHtml += `
+    <div class="sheet-item summary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
+      <strong>Sheet 1: Summary</strong> (All Subnets, Gateways, and BDT Schedule)
+    </div>
+  `;
+  
+  plannerState.subnets.forEach((sub, i) => {
+    const details = getSubnetDetails(sub.ip, sub.cidr);
+    const limit = details ? (sub.cidr >= 24 ? details.numHosts : Math.min(details.numHosts, 100)) : 0;
+    structureHtml += `
+      <div class="sheet-item subnet" style="margin-top: 0.25rem;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
+        <span>Sheet ${i + 2}: <strong>${escapeHtml(sub.name.substring(0, 18))}</strong> (${limit} IPs planned)</span>
+      </div>
+    `;
+  });
+  dom.plannerPreviewSheetsStructure.innerHTML = structureHtml;
+}
+
+// Append planning warnings/errors
+function addPlannerAlert(text, type) {
+  const alert = document.createElement('div');
+  alert.className = `planner-alert ${type}`;
+  
+  let icon = '';
+  if (type === 'error') {
+    icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+  } else if (type === 'warning') {
+    icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+  } else {
+    icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
+  }
+  
+  alert.innerHTML = `${icon}<span>${escapeHtml(text)}</span>`;
+  dom.plannerValidationAlerts.appendChild(alert);
+}
+
+// Export the design using SheetJS
+function exportPlannerXlsx() {
+  if (plannerState.subnets.length === 0) {
+    alert("Please add at least one subnet to export.");
+    return;
+  }
+  
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Summary Sheet
+    const summaryRows = [
+      ["BACnet Subnet & BBMD Distribution Summary"],
+      [`Generated on: ${new Date().toLocaleDateString()}`],
+      [],
+      ["Subnet Configuration List"],
+      ["Subnet Name", "Network ID / CIDR", "Subnet Mask", "Default Gateway IP", "Usable IP Range", "BBMD IP Address", "BMS Server Placement & Role"],
+    ];
+
+    plannerState.subnets.forEach(sub => {
+      const details = getSubnetDetails(sub.ip, sub.cidr);
+      const rangeStr = details ? `${details.firstUsable} - ${details.lastUsable}` : 'N/A';
+      const maskStr = details ? details.mask : 'N/A';
+      const netCidr = `${sub.ip}/${sub.cidr}`;
+      const gatewayIp = getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset);
+      const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
+      
+      let bmsRole = "None";
+      if (sub.bmsPlaced) {
+        if (sub.bmsRole === 'bbmd') bmsRole = "Local BBMD";
+        else if (sub.bmsRole === 'fdr') {
+          const targetSub = plannerState.subnets.find(s => s.id === sub.fdrTargetSubnetId);
+          bmsRole = `FDR (Registered to BBMD on ${targetSub ? targetSub.name : 'Unknown'})`;
+        } else bmsRole = "Local Subnet Only";
+      }
+
+      summaryRows.push([
+        sub.name,
+        netCidr,
+        maskStr,
+        gatewayIp,
+        rangeStr,
+        bbmdIp,
+        bmsRole
+      ]);
+    });
+
+    summaryRows.push([]);
+    summaryRows.push([]);
+    summaryRows.push(["Global Broadcast Distribution Table (BDT) Schedule"]);
+    summaryRows.push(["BBMD IP Address", "Subnet Mask", "BACnet UDP Port", "Subnet Name Reference"]);
+
+    const bbmds = plannerState.subnets.filter(s => s.bbmdEnabled).map(s => {
+      const details = getSubnetDetails(s.ip, s.cidr);
+      return {
+        name: s.name,
+        ip: getOffsetIp(s.ip, s.cidr, s.bbmdOffset),
+        mask: details ? details.mask : 'N/A'
+      };
+    });
+
+    if (bbmds.length === 0) {
+      summaryRows.push(["No BBMD routers configured in this network plan.", "", "", ""]);
+    } else {
+      bbmds.forEach(bbmd => {
+        summaryRows.push([bbmd.ip, bbmd.mask, 47808, bbmd.name]);
+      });
+    }
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Network Summary");
+
+    // 2. Subnet Sheets
+    plannerState.subnets.forEach(sub => {
+      const details = getSubnetDetails(sub.ip, sub.cidr);
+      const subnetRows = [];
+      const gatewayIp = getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset);
+      const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
+      const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : "None";
+
+      subnetRows.push([`Subnet Device Planning Log: ${sub.name}`]);
+      subnetRows.push([]);
+      subnetRows.push(["Subnet Network Details", "", "", "BBMD Broadcast Distribution Table (BDT) Entries"]);
+      
+      const properties = [
+        ["Network IP / CIDR", `${sub.ip}/${sub.cidr}`],
+        ["Subnet Mask", details ? details.mask : 'N/A'],
+        ["Default Gateway IP", gatewayIp],
+        ["BBMD IP Address", bbmdIp]
+      ];
+
+      const otherBbmds = bbmds.filter(b => b.ip !== bbmdIp);
+
+      for (let i = 0; i < properties.length; i++) {
+        const row = [properties[i][0], properties[i][1], ""];
+        if (sub.bbmdEnabled) {
+          if (i === 0) {
+            row.push("BBMD IP Address");
+            row.push("Subnet Mask");
+          } else {
+            const bdtEntry = otherBbmds[i - 1];
+            row.push(bdtEntry ? bdtEntry.ip : "");
+            row.push(bdtEntry ? bdtEntry.mask : "");
+          }
+        } else {
+          if (i === 0) {
+            row.push("BBMD routing is disabled for this subnet.");
+          }
+        }
+        subnetRows.push(row);
+      }
+
+      if (sub.bbmdEnabled && otherBbmds.length > 3) {
+        for (let i = 3; i < otherBbmds.length; i++) {
+          subnetRows.push(["", "", "", otherBbmds[i].ip, otherBbmds[i].mask]);
+        }
+      }
+
+      subnetRows.push([]);
+      subnetRows.push([]);
+
+      // Device List Header
+      subnetRows.push([
+        "Planned IP Address", 
+        "IP Assignment / Reservation", 
+        "BACnet Device ID", 
+        "Device Name", 
+        "Vendor", 
+        "Device Type", 
+        "Object Count", 
+        "Location / Description"
+      ]);
+
+      if (details) {
+        const limit = sub.cidr >= 24 ? details.numHosts : Math.min(details.numHosts, 100);
+        const startLong = details.firstUsableLong;
+
+        for (let offset = 0; offset < limit; offset++) {
+          const currentLong = (startLong + offset) >>> 0;
+          const currentIp = longToIp(currentLong);
+
+          let usage = "Available";
+          if (currentIp === gatewayIp) {
+            usage = "Default Gateway";
+          } else if (currentIp === bbmdIp) {
+            usage = "BBMD Router Node";
+          } else if (sub.bmsPlaced && currentIp === bmsIp) {
+            usage = `BMS Server (${sub.bmsRole.toUpperCase()})`;
+          }
+
+          subnetRows.push([
+            currentIp,
+            usage,
+            "", // Device ID
+            "", // Device Name
+            "", // Vendor
+            "", // Device Type
+            "", // Object Count
+            ""  // Location
+          ]);
+        }
+      }
+
+      const wsSubnet = XLSX.utils.aoa_to_sheet(subnetRows);
+      const sanitizedName = sub.name.replace(/[\\\?\*:\/\[\]]/g, "").substring(0, 30);
+      XLSX.utils.book_append_sheet(wb, wsSubnet, sanitizedName);
+    });
+
+    // 3. Save Book
+    XLSX.writeFile(wb, "BACnet_Network_Plan.xlsx");
+    
+  } catch (err) {
+    console.error(err);
+    alert("An error occurred while generating the spreadsheet.");
+  }
 }
