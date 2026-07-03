@@ -1753,6 +1753,7 @@ const plannerState = {
       cidr: 24,
       gatewayOffset: 1,
       vlan: 10,
+      port: 47808,
       bbmdEnabled: true,
       bbmdOffset: 10,
       bmsPlaced: true,
@@ -1766,6 +1767,7 @@ const plannerState = {
       cidr: 24,
       gatewayOffset: 1,
       vlan: 20,
+      port: 47808,
       bbmdEnabled: true,
       bbmdOffset: 10,
       bmsPlaced: false,
@@ -1779,6 +1781,7 @@ const plannerState = {
       cidr: 23,
       gatewayOffset: 1,
       vlan: 30,
+      port: 47808,
       bbmdEnabled: false,
       bbmdOffset: 10,
       bmsPlaced: false,
@@ -1846,20 +1849,25 @@ function renderSubnetList() {
       <div class="planner-card-grid">
         <!-- Left Column: IP Configuration -->
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-          <div style="display: flex; gap: 0.75rem;">
-            <div class="form-group" style="margin-bottom: 0; flex: 2;">
-              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet Network IP & Mask</label>
-              <div style="display: flex; gap: 0.4rem; align-items: center;">
-                <input type="text" class="planner-subnet-ip" value="${sub.ip}" style="flex: 2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;" placeholder="e.g. 192.168.1.0">
-                <select class="planner-subnet-cidr" style="flex: 1.2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;">
+          <div style="display: flex; gap: 0.6rem;">
+            <div class="form-group" style="margin-bottom: 0; flex: 1.8;">
+              <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet IP & Mask</label>
+              <div style="display: flex; gap: 0.3rem; align-items: center;">
+                <input type="text" class="planner-subnet-ip" value="${sub.ip}" style="flex: 2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 192.168.1.0">
+                <select class="planner-subnet-cidr" style="flex: 1.2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;">
                   ${cidrOptionsHtml}
                 </select>
               </div>
             </div>
             
+            <div class="form-group" style="margin-bottom: 0; flex: 0.8;">
+              <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">VLAN ID</label>
+              <input type="number" class="planner-subnet-vlan" value="${sub.vlan || ''}" min="1" max="4094" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 10">
+            </div>
+
             <div class="form-group" style="margin-bottom: 0; flex: 1;">
-              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">VLAN ID</label>
-              <input type="number" class="planner-subnet-vlan" value="${sub.vlan || ''}" min="1" max="4094" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;" placeholder="e.g. 10">
+              <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">BACnet Port</label>
+              <input type="number" class="planner-subnet-port" value="${sub.port || 47808}" min="1024" max="65535" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="47808">
             </div>
           </div>
           
@@ -1954,6 +1962,19 @@ function renderSubnetList() {
       updatePlannerPreviews();
     });
 
+    const portInput = card.querySelector('.planner-subnet-port');
+    portInput.addEventListener('input', () => {
+      let val = parseInt(portInput.value);
+      if (!isNaN(val)) {
+        if (val < 1024) val = 1024;
+        if (val > 65535) val = 65535;
+        sub.port = val;
+      } else {
+        sub.port = 47808;
+      }
+      updatePlannerPreviews();
+    });
+
     const gwOffsetInput = card.querySelector('.planner-subnet-gateway-offset');
     gwOffsetInput.addEventListener('input', () => {
       sub.gatewayOffset = parseInt(gwOffsetInput.value) || 1;
@@ -2036,6 +2057,7 @@ function addPlannerSubnet() {
     cidr: 24,
     gatewayOffset: 1,
     vlan: nextOctet * 10,
+    port: 47808,
     bbmdEnabled: false,
     bbmdOffset: 10,
     bmsPlaced: false,
@@ -2064,7 +2086,9 @@ function updatePlannerPreviews() {
   let hasWarnings = false;
 
   const ipValidationErrors = [];
-  const overlaps = [];
+  const overlapsErrors = [];
+  const overlapsWarnings = [];
+  const overlapsNotes = [];
   
   plannerState.subnets.forEach(sub => {
     if (!sub.ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) || ipToLong(sub.ip) === null) {
@@ -2085,14 +2109,23 @@ function updatePlannerPreviews() {
           const start2 = d2.networkLong;
           const end2 = d2.broadcastLong;
           if (start1 <= end2 && start2 <= end1) {
-            overlaps.push(`Conflict: Subnet "${s1.name}" (${s1.ip}/${s1.cidr}) and Subnet "${s2.name}" (${s2.ip}/${s2.cidr}) overlap!`);
+            // Check if they share the same VLAN
+            if (s1.vlan === s2.vlan) {
+              if ((s1.port || 47808) === (s2.port || 47808)) {
+                overlapsErrors.push(`Conflict: Subnet "${s1.name}" and "${s2.name}" overlap in IP range on the same VLAN (VLAN ${s1.vlan || 'default'}) and use the same BACnet port (${s1.port || 47808}). This will cause host IP clashes.`);
+              } else {
+                overlapsNotes.push(`Note: Subnets "${s1.name}" and "${s2.name}" share VLAN ${s1.vlan || 'default'} and IP range, but operate on different UDP ports (${s1.port || 47808} vs ${s2.port || 47808}) as separate BACnet networks.`);
+              }
+            } else {
+              overlapsWarnings.push(`Warning: Subnets "${s1.name}" and "${s2.name}" overlap in IP range but reside on separate VLANs (VLAN ${s1.vlan || 'default'} vs VLAN ${s2.vlan || 'default'}).`);
+            }
           }
         }
       }
     }
   }
 
-  // VLAN 1-to-1 Validation
+  // VLAN mapping check
   const vlanMap = {};
   plannerState.subnets.forEach(sub => {
     if (sub.vlan) {
@@ -2103,10 +2136,10 @@ function updatePlannerPreviews() {
     }
   });
 
-  const duplicateVlans = [];
+  const duplicateVlansInfo = [];
   Object.keys(vlanMap).forEach(vlan => {
     if (vlanMap[vlan].length > 1) {
-      duplicateVlans.push(`Warning: Subnets [${vlanMap[vlan].join(', ')}] are assigned to the same VLAN (VLAN ${vlan}). Standard OT designs map each IP subnet 1-to-1 to a unique VLAN.`);
+      duplicateVlansInfo.push(`Info: Subnets [${vlanMap[vlan].join(', ')}] are co-located on VLAN ${vlan}. While they share a Layer 2 broadcast domain, they remain logically isolated at Layer 3 unless routed.`);
     }
   });
 
@@ -2114,13 +2147,19 @@ function updatePlannerPreviews() {
     addPlannerAlert(err, 'error');
     hasErrors = true;
   });
-  overlaps.forEach(err => {
+  overlapsErrors.forEach(err => {
     addPlannerAlert(err, 'error');
     hasErrors = true;
   });
-  duplicateVlans.forEach(err => {
+  overlapsWarnings.forEach(err => {
     addPlannerAlert(err, 'warning');
     hasWarnings = true;
+  });
+  overlapsNotes.forEach(err => {
+    addPlannerAlert(err, 'success');
+  });
+  duplicateVlansInfo.forEach(err => {
+    addPlannerAlert(err, 'warning');
   });
 
   const enabledBbmds = plannerState.subnets.filter(s => s.bbmdEnabled);
@@ -2189,13 +2228,13 @@ function updatePlannerPreviews() {
     enabledBbmds.forEach(sub => {
       const selfIp = getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset);
       const otherIps = enabledBbmds
-        .filter(s => s.id !== sub.id)
+        .filter(s => s.id !== sub.id && (s.port || 47808) === (sub.port || 47808))
         .map(s => getOffsetIp(s.ip, s.cidr, s.bbmdOffset));
         
       html += `<div style="margin-bottom: 0.5rem; padding-bottom: 0.4rem; border-bottom: 1px dashed rgba(255,255,255,0.05);">`;
-      html += `<strong style="color: var(--primary);">${escapeHtml(sub.name)} BBMD (${selfIp})</strong><br>`;
+      html += `<strong style="color: var(--primary);">${escapeHtml(sub.name)} BBMD (${selfIp}:${sub.port || 47808})</strong><br>`;
       if (otherIps.length === 0) {
-        html += `<span style="color: var(--text-muted); font-size: 0.75rem;">BDT Table: Empty (No other BBMDs)</span>`;
+        html += `<span style="color: var(--text-muted); font-size: 0.75rem;">BDT Table: Empty (No other BBMDs on port ${sub.port || 47808})</span>`;
       } else {
         html += `<span style="font-size: 0.75rem; color: var(--text-secondary);">BDT Entries: [ ${otherIps.join(', ')} ]</span>`;
       }
@@ -2386,14 +2425,15 @@ function exportPlannerXlsx() {
 
     // 1. Summary Sheet Setup
     const summaryRows = [
-      [makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", ""],
-      [makeCell("  BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", "", ""],
-      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", "", ""],
+      [makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", "", ""],
+      [makeCell("  BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", "", "", ""],
+      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", "", "", ""],
       [], // spacer
-      [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", "", ""],
+      [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", "", "", ""],
       [
         makeCell("Subnet Name", "tableHeader"),
         makeCell("VLAN ID", "tableHeader"),
+        makeCell("BACnet UDP Port", "tableHeader"),
         makeCell("Network ID / CIDR", "tableHeader"),
         makeCell("Subnet Mask", "tableHeader"),
         makeCell("Default Gateway IP", "tableHeader"),
@@ -2425,6 +2465,7 @@ function exportPlannerXlsx() {
       summaryRows.push([
         makeCell(sub.name, rowStyle),
         makeCell(sub.vlan || 'None', rowStyle),
+        makeCell(sub.port || 47808, rowStyle),
         makeCell(netCidr, rowStyle),
         makeCell(maskStr, rowStyle),
         makeCell(gatewayIp, rowStyle),
@@ -2440,13 +2481,13 @@ function exportPlannerXlsx() {
     // BDT schedule segment
     const bdtSectionHeaderRow = 8 + plannerState.subnets.length;
 
-    summaryRows.push([makeCell("Global Broadcast Distribution Table (BDT) Schedule", "sectionHeader"), "", "", "", "", "", "", ""]);
+    summaryRows.push([makeCell("Global Broadcast Distribution Table (BDT) Schedule", "sectionHeader"), "", "", "", "", "", "", "", ""]);
     summaryRows.push([
       makeCell("BBMD IP Address", "tableHeader"),
       makeCell("Subnet Mask", "tableHeader"),
       makeCell("BACnet UDP Port", "tableHeader"),
       makeCell("Subnet Name Reference", "tableHeader"),
-      "", "", "", ""
+      "", "", "", "", ""
     ]);
 
     const bbmds = plannerState.subnets.filter(s => s.bbmdEnabled).map(s => {
@@ -2454,14 +2495,15 @@ function exportPlannerXlsx() {
       return {
         name: s.name,
         ip: getOffsetIp(s.ip, s.cidr, s.bbmdOffset),
-        mask: details ? details.mask : 'N/A'
+        mask: details ? details.mask : 'N/A',
+        port: s.port || 47808
       };
     });
 
     if (bbmds.length === 0) {
       summaryRows.push([
         makeCell("No BBMD routers configured in this network plan. Broadcasts will not cross subnets.", "dataCell"),
-        "", "", "", "", "", "", ""
+        "", "", "", "", "", "", "", ""
       ]);
     } else {
       bbmds.forEach((bbmd, idx) => {
@@ -2469,9 +2511,9 @@ function exportPlannerXlsx() {
         summaryRows.push([
           makeCell(bbmd.ip, rowStyle),
           makeCell(bbmd.mask, rowStyle),
-          makeCell(47808, rowStyle),
+          makeCell(bbmd.port, rowStyle),
           makeCell(bbmd.name, rowStyle),
-          "", "", "", ""
+          "", "", "", "", ""
         ]);
       });
     }
@@ -2486,7 +2528,7 @@ function exportPlannerXlsx() {
 
     summaryRows.push([
       makeCell("ACE IoT Solutions — OT Network Management & Security Services", "brandCardHeader"),
-      "", "", "", "", "", "", ""
+      "", "", "", "", "", "", "", ""
     ]);
     
     summaryRows.push([
@@ -2498,7 +2540,7 @@ function exportPlannerXlsx() {
         "Get in touch with our team: visit https://aceiotsolutions.com or email us at info@aceiotsolutions.com",
         "brandCardBody"
       ),
-      "", "", "", "", "", "", ""
+      "", "", "", "", "", "", "", ""
     ]);
 
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
@@ -2507,6 +2549,7 @@ function exportPlannerXlsx() {
     wsSummary['!cols'] = [
       { wch: 25 }, // Subnet Name
       { wch: 10 }, // VLAN ID
+      { wch: 15 }, // BACnet UDP Port
       { wch: 20 }, // Network ID / CIDR
       { wch: 18 }, // Subnet Mask
       { wch: 18 }, // Default Gateway IP
@@ -2517,17 +2560,17 @@ function exportPlannerXlsx() {
 
     // Merges
     const summaryMerges = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Brand Header
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Title
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }, // Subtitle
-      { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // Section 1 Header
-      { s: { r: bdtSectionHeaderRow, c: 0 }, e: { r: bdtSectionHeaderRow, c: 7 } }, // Section 2 Header
-      { s: { r: brandHeaderRow, c: 0 }, e: { r: brandHeaderRow, c: 7 } }, // Brand Header
-      { s: { r: brandBodyRow, c: 0 }, e: { r: brandBodyRow, c: 7 } }  // Brand Body
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }, // Brand Header
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } }, // Title
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 8 } }, // Subtitle
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 8 } }, // Section 1 Header
+      { s: { r: bdtSectionHeaderRow, c: 0 }, e: { r: bdtSectionHeaderRow, c: 8 } }, // Section 2 Header
+      { s: { r: brandHeaderRow, c: 0 }, e: { r: brandHeaderRow, c: 8 } }, // Brand Header
+      { s: { r: brandBodyRow, c: 0 }, e: { r: brandBodyRow, c: 8 } }  // Brand Body
     ];
     
     if (bbmds.length === 0) {
-      summaryMerges.push({ s: { r: bdtSectionHeaderRow + 2, c: 0 }, e: { r: bdtSectionHeaderRow + 2, c: 7 } });
+      summaryMerges.push({ s: { r: bdtSectionHeaderRow + 2, c: 0 }, e: { r: bdtSectionHeaderRow + 2, c: 8 } });
     }
 
     wsSummary['!merges'] = summaryMerges;
@@ -2571,11 +2614,12 @@ function exportPlannerXlsx() {
         ["Network IP / CIDR", `${sub.ip}/${sub.cidr}`],
         ["Subnet Mask", details ? details.mask : 'N/A'],
         ["VLAN ID", sub.vlan || 'None'],
+        ["BACnet UDP Port", sub.port || 47808],
         ["Default Gateway IP", gatewayIp],
         ["BBMD IP Address", bbmdIp]
       ];
 
-      const otherBbmds = bbmds.filter(b => b.ip !== bbmdIp);
+      const otherBbmds = bbmds.filter(b => b.ip !== bbmdIp && b.port === (sub.port || 47808));
 
       for (let i = 0; i < properties.length; i++) {
         const row = [
@@ -2610,8 +2654,8 @@ function exportPlannerXlsx() {
       }
 
       // Add extra BDT rows if necessary
-      if (sub.bbmdEnabled && otherBbmds.length > 4) {
-        for (let i = 4; i < otherBbmds.length; i++) {
+      if (sub.bbmdEnabled && otherBbmds.length > 5) {
+        for (let i = 5; i < otherBbmds.length; i++) {
           subnetRows.push([
             makeCell("", "dataCell"),
             makeCell("", "dataCell"),
@@ -2702,13 +2746,14 @@ function exportPlannerXlsx() {
         subnetMerges.push({ s: { r: 7, c: 3 }, e: { r: 7, c: 5 } });
         subnetMerges.push({ s: { r: 8, c: 3 }, e: { r: 8, c: 5 } });
         subnetMerges.push({ s: { r: 9, c: 3 }, e: { r: 9, c: 5 } });
+        subnetMerges.push({ s: { r: 10, c: 3 }, e: { r: 10, c: 5 } });
       }
 
       wsSubnet['!merges'] = subnetMerges;
       
       // Row Heights
       const subnetRowHeights = [];
-      const dataHeaderRow = 4 + 5 + (sub.bbmdEnabled && otherBbmds.length > 4 ? otherBbmds.length - 4 : 0) + 3;
+      const dataHeaderRow = 4 + 6 + (sub.bbmdEnabled && otherBbmds.length > 5 ? otherBbmds.length - 5 : 0) + 3;
       for (let r = 0; r <= dataHeaderRow; r++) {
         subnetRowHeights.push({ hpt: 20 });
       }
