@@ -34,6 +34,7 @@ const dom = {
   plannerPreviewBdt: document.getElementById('planner-preview-bdt'),
   btnPlannerExportXlsx: document.getElementById('btn-planner-export-xlsx'),
   plannerPreviewSheetsStructure: document.getElementById('planner-preview-sheets-structure'),
+  chkSplitHorizonMode: document.getElementById('chk-split-horizon-mode'),
 
   // Inputs
   presetSelect: document.getElementById('preset-select'),
@@ -192,6 +193,10 @@ function setupEventListeners() {
   // Planner Event Listeners
   dom.btnPlannerAddSubnet.addEventListener('click', addPlannerSubnet);
   dom.btnPlannerExportXlsx.addEventListener('click', exportPlannerXlsx);
+  dom.chkSplitHorizonMode.addEventListener('change', () => {
+    plannerState.splitHorizon = dom.chkSplitHorizonMode.checked;
+    renderSubnetList();
+  });
 
   // Input changes
   dom.devAIp.addEventListener('input', () => handleInputChange('devA'));
@@ -1745,6 +1750,7 @@ function getBbmdConfig() {
 
 // Global Planner State
 const plannerState = {
+  splitHorizon: false,
   subnets: [
     {
       id: 'sub-1',
@@ -1838,6 +1844,31 @@ function renderSubnetList() {
     const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : 'N/A';
     const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : 'N/A';
 
+    let routeTargetsHtml = '';
+    if (plannerState.splitHorizon && sub.bbmdEnabled) {
+      const otherBbmSubnets = plannerState.subnets.filter(s => s.id !== sub.id && s.bbmdEnabled);
+      if (otherBbmSubnets.length === 0) {
+        routeTargetsHtml = `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">No other BBMD routers found.</div>`;
+      } else {
+        routeTargetsHtml += `<div style="margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.08);">
+          <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Route Broadcasts to BBMDs:</label>
+          <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem;">`;
+        otherBbmSubnets.forEach(obs => {
+          if (!sub.routeTargets) {
+            sub.routeTargets = plannerState.subnets.filter(s => s.id !== sub.id && s.bbmdEnabled).map(s => s.id);
+          }
+          const isChecked = sub.routeTargets.includes(obs.id);
+          routeTargetsHtml += `
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0; color: var(--text-secondary);">
+              <input type="checkbox" class="planner-route-target-chk" data-target-id="${obs.id}" ${isChecked ? 'checked' : ''}>
+              ${escapeHtml(obs.name)}
+            </label>
+          `;
+        });
+        routeTargetsHtml += `</div></div>`;
+      }
+    }
+
     card.innerHTML = `
       <div class="planner-card-header">
         <input type="text" class="planner-subnet-name" value="${escapeHtml(sub.name)}" style="font-family: var(--font-heading); font-weight: bold; font-size: 1rem; border: none; background: transparent; color: #fff; width: 80%; padding: 0.2rem; border-bottom: 1px dashed transparent;" placeholder="Subnet Name" onfocus="this.style.borderBottom='1px dashed var(--primary)'" onblur="this.style.borderBottom='1px dashed transparent'">
@@ -1894,6 +1925,7 @@ function renderSubnetList() {
               <input type="number" class="planner-bbmd-offset" value="${sub.bbmdOffset}" min="1" max="254" style="width: 70px; padding: 0.25rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.8rem;">
               <span style="font-size: 0.75rem; color: var(--text-secondary);">IP: <strong style="color: #fff;">${bbmdIp}</strong></span>
             </div>
+            ${routeTargetsHtml}
           </div>
           
           <!-- BMS Server Configuration -->
@@ -2026,6 +2058,24 @@ function renderSubnetList() {
         updatePlannerPreviews();
       });
     }
+
+    const routeChks = card.querySelectorAll('.planner-route-target-chk');
+    routeChks.forEach(chk => {
+      chk.addEventListener('change', () => {
+        const targetId = chk.dataset.targetId;
+        if (!sub.routeTargets) {
+          sub.routeTargets = plannerState.subnets.filter(s => s.id !== sub.id && s.bbmdEnabled).map(s => s.id);
+        }
+        if (chk.checked) {
+          if (!sub.routeTargets.includes(targetId)) {
+            sub.routeTargets.push(targetId);
+          }
+        } else {
+          sub.routeTargets = sub.routeTargets.filter(id => id !== targetId);
+        }
+        updatePlannerPreviews();
+      });
+    });
 
     card.querySelector('.planner-btn-delete').addEventListener('click', () => {
       deletePlannerSubnet(sub.id);
@@ -2239,6 +2289,29 @@ function updatePlannerPreviews() {
     }
   }
 
+  // Split Horizon asymmetric routing validations
+  if (plannerState.splitHorizon) {
+    for (let i = 0; i < enabledBbmds.length; i++) {
+      for (let j = i + 1; j < enabledBbmds.length; j++) {
+        const s1 = enabledBbmds[i];
+        const s2 = enabledBbmds[j];
+        if ((s1.port || 47808) === (s2.port || 47808)) {
+          const s1Targets = s1.routeTargets || enabledBbmds.filter(s => s.id !== s1.id).map(s => s.id);
+          const s2Targets = s2.routeTargets || enabledBbmds.filter(s => s.id !== s2.id).map(s => s.id);
+          const s1RoutesToS2 = s1Targets.includes(s2.id);
+          const s2RoutesToS1 = s2Targets.includes(s1.id);
+          
+          if (s1RoutesToS2 !== s2RoutesToS1) {
+            const routesFrom = s1RoutesToS2 ? s1.name : s2.name;
+            const routesTo = s1RoutesToS2 ? s2.name : s1.name;
+            addPlannerAlert(`Warning: Asymmetric BDT routing detected on port ${s1.port || 47808}. "${routesFrom}" tunnels broadcasts to "${routesTo}", but "${routesTo}" does not tunnel back. This will block Who-Is/I-Am discovery in one direction.`, 'warning');
+            hasWarnings = true;
+          }
+        }
+      }
+    }
+  }
+
   const bmsSubnet = plannerState.subnets.find(s => s.bmsPlaced);
   if (bmsSubnet) {
     if (bmsSubnet.bmsRole === 'fdr') {
@@ -2259,7 +2332,10 @@ function updatePlannerPreviews() {
   }
 
   if (!hasErrors && !hasWarnings && plannerState.subnets.length > 0) {
-    addPlannerAlert('Symmetrical BBMD routing & network configurations valid.', 'success');
+    const successMsg = plannerState.splitHorizon 
+      ? 'Split Horizon BBMD routing & network configurations valid.' 
+      : 'Symmetrical BBMD routing & network configurations valid.';
+    addPlannerAlert(successMsg, 'success');
   }
 
   // BMS Server Info Box
@@ -2291,8 +2367,9 @@ function updatePlannerPreviews() {
     let html = '';
     enabledBbmds.forEach(sub => {
       const selfIp = getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset);
+      const allowedTargets = sub.routeTargets || enabledBbmds.filter(s => s.id !== sub.id).map(s => s.id);
       const otherIps = enabledBbmds
-        .filter(s => s.id !== sub.id && (s.port || 47808) === (sub.port || 47808))
+        .filter(s => s.id !== sub.id && (s.port || 47808) === (sub.port || 47808) && (!plannerState.splitHorizon || allowedTargets.includes(s.id)))
         .map(s => getOffsetIp(s.ip, s.cidr, s.bbmdOffset));
         
       html += `<div style="margin-bottom: 0.5rem; padding-bottom: 0.4rem; border-bottom: 1px dashed rgba(255,255,255,0.05);">`;
@@ -2591,6 +2668,7 @@ function exportPlannerXlsx() {
     const bbmds = plannerState.subnets.filter(s => s.bbmdEnabled).map(s => {
       const details = getSubnetDetails(s.ip, s.cidr);
       return {
+        id: s.id,
         name: s.name,
         ip: getOffsetIp(s.ip, s.cidr, s.bbmdOffset),
         mask: details ? details.mask : 'N/A',
@@ -2717,7 +2795,8 @@ function exportPlannerXlsx() {
         ["BBMD IP Address", bbmdIp]
       ];
 
-      const otherBbmds = bbmds.filter(b => b.ip !== bbmdIp && b.port === (sub.port || 47808));
+      const allowedTargets = sub.routeTargets || [];
+      const otherBbmds = bbmds.filter(b => b.id !== sub.id && b.port === (sub.port || 47808) && (!plannerState.splitHorizon || allowedTargets.includes(b.id)));
 
       for (let i = 0; i < properties.length; i++) {
         const row = [

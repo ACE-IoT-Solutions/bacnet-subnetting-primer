@@ -599,6 +599,11 @@
           <h4 class="primer-subheading" style="margin-top: 1.5rem;">FDR: Foreign Device Registration</h4>
           <p>If a remote subnet only has a single BACnet device (like a technician's laptop), setting up a dedicated BBMD is overkill. Instead, the laptop can register as a <strong>Foreign Device (FDR)</strong>. The laptop periodically registers its IP address with a primary BBMD, which then relays broadcasts directly to the laptop via unicast UDP.</p>
 
+          <h4 class="primer-subheading" style="margin-top: 1.5rem;">Advanced Topology: Split Horizon Routing</h4>
+          <p>By default, BACnet/IP broadcast routing is <strong>symmetric</strong>: every BBMD router holds an identical Broadcast Distribution Table (BDT) containing every other BBMD's IP address. This enables full, open discovery between all subnets.</p>
+          <p>In high-security or multi-vendor buildings, engineers configure a <strong>Split Horizon</strong> (partitioned BDT) architecture. Instead of syncing identical tables, individual BBMDs are configured with custom BDT tables containing only a subset of the building's BBMDs. For example, a tenant subnet BBMD might register the Core BMS Server BBMD, but exclude other tenants' BBMDs. This isolates tenant networks from each other's broadcast traffic while preserving communication with the central BMS.</p>
+          <p><strong>The Bidirectional Rule:</strong> BACnet discovery requires bidirectionality. If BBMD A tunnels broadcasts to BBMD B, but BBMD B's BDT does not include BBMD A, then Device A can send a Who-Is query to Device B, but Device B's I-Am reply will be blocked from traveling back to Subnet A, causing discovery to fail. Split horizon designs must be carefully configured to avoid asymmetric routing faults.</p>
+
           <!-- Interactive BBMD Simulation Diagram -->
           <div class="bbmd-diagram-wrapper">
             <h4 class="primer-subheading" style="font-size: 0.95rem; margin-bottom: 0.5rem;">Interactive BBMD Broadcast Simulator</h4>
@@ -729,8 +734,14 @@
           
           <!-- Left side: Subnets Management -->
           <div style="display: flex; flex-direction: column; gap: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #fff; margin: 0;">Configured Subnets</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
+                <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #fff; margin: 0;">Configured Subnets</h3>
+                <label style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; margin: 0; user-select: none;">
+                  <input type="checkbox" id="chk-split-horizon-mode" style="cursor: pointer;">
+                  Split Horizon Routing Mode
+                </label>
+              </div>
               <button class="btn btn-primary" id="btn-planner-add-subnet" style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; padding: 0.4rem 0.8rem; flex: none; min-width: auto;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 Add Subnet
