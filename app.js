@@ -98,7 +98,8 @@ const dom = {
   btnOsiIpLocalUc: document.getElementById('btn-osi-ip-local-uc'),
   btnOsiIpRoutedUc: document.getElementById('btn-osi-ip-routed-uc'),
   btnOsiIpBbmdTunnel: document.getElementById('btn-osi-ip-bbmd-tunnel'),
-  btnOsiEth: document.getElementById('btn-osi-eth'),
+  btnOsiEthUc: document.getElementById('btn-osi-eth-uc'),
+  btnOsiEthBc: document.getElementById('btn-osi-eth-bc'),
   osiPacketViewer: document.getElementById('osi-packet-viewer'),
 
   // BBMD Primer Elements
@@ -204,7 +205,8 @@ function setupEventListeners() {
   dom.btnOsiIpLocalUc.addEventListener('click', () => selectOsiTab('ip-local-uc'));
   dom.btnOsiIpRoutedUc.addEventListener('click', () => selectOsiTab('ip-routed-uc'));
   dom.btnOsiIpBbmdTunnel.addEventListener('click', () => selectOsiTab('ip-bbmd-tunnel'));
-  dom.btnOsiEth.addEventListener('click', () => selectOsiTab('eth'));
+  dom.btnOsiEthUc.addEventListener('click', () => selectOsiTab('eth-uc'));
+  dom.btnOsiEthBc.addEventListener('click', () => selectOsiTab('eth-bc'));
 
   // Primer BBMD simulation buttons
   dom.btnBbmdOff.addEventListener('click', () => runPrimerBbmdflow(false));
@@ -1229,7 +1231,8 @@ function selectOsiTab(stack) {
   dom.btnOsiIpLocalUc.classList.remove('active');
   dom.btnOsiIpRoutedUc.classList.remove('active');
   dom.btnOsiIpBbmdTunnel.classList.remove('active');
-  dom.btnOsiEth.classList.remove('active');
+  dom.btnOsiEthUc.classList.remove('active');
+  dom.btnOsiEthBc.classList.remove('active');
 
   if (stack === 'ip-local-uc') {
     dom.btnOsiIpLocalUc.classList.add('active');
@@ -1303,21 +1306,41 @@ function selectOsiTab(stack) {
         <span class="layer-meta">L7</span> BACnet APDU (Who-Is Broadcast payload)
       </div>
     `;
-  } else {
-    dom.btnOsiEth.classList.add('active');
+  } else if (stack === 'eth-uc') {
+    dom.btnOsiEthUc.classList.add('active');
     dom.osiPacketViewer.innerHTML = `
       <div class="packet-layer eth">
-        <span class="layer-meta">L2</span> Ethernet Header (Length-encoded Frame)
+        <span class="layer-meta">L2</span> Ethernet MAC Header (Src: DevA_MAC | Dst: DevB_MAC)
+        <div style="font-size: 0.75rem; margin-top: 0.2rem; opacity: 0.8;">IEEE 802.3 length-encoded frame. Unicast direct Layer 2 mapping.</div>
       </div>
-      <div class="packet-layer eth" style="background: rgba(148, 216, 255, 0.25);">
-        <span class="layer-meta">L2</span> LLC Header (IEEE 802.2 DSAP: 0x82 | SSAP: 0x82)
-        <div style="font-size: 0.75rem; margin-top: 0.2rem; opacity: 0.8;">Bypasses IP/UDP. Direct Layer 2 MAC address mapping.</div>
+      <div class="packet-layer eth" style="background: rgba(148, 216, 255, 0.15);">
+        <span class="layer-meta">L2</span> LLC Header (IEEE 802.2 DSAP: 0x82 | SSAP: 0x82 | Control: 0x03)
+        <div style="font-size: 0.75rem; margin-top: 0.2rem; opacity: 0.8;">Bypasses IP/UDP. Directly encapsulates BACnet NPDU.</div>
       </div>
       <div class="packet-layer bacnet">
-        <span class="layer-meta">L7</span> BACnet APDU (Who-Is / I-Am)
+        <span class="layer-meta">L7</span> BACnet APDU (e.g. ReadProperty-Request)
       </div>
       <div style="text-align: center; font-size: 0.75rem; color: var(--error); border: 1px dashed var(--error); padding: 0.5rem; margin-top: 0.5rem; border-radius: var(--radius-sm);">
-        Notice: No Layer 3 (IP) or Layer 4 (UDP) encapsulation. This frame cannot cross routers.
+        Notice: No Layer 3 (IP) or Layer 4 (UDP) encapsulation. Strictly confined to the local physical segment.
+      </div>
+    `;
+  } else if (stack === 'eth-bc') {
+    dom.btnOsiEthBc.classList.add('active');
+    dom.osiPacketViewer.innerHTML = `
+      <div class="packet-layer eth" style="border: 1px solid var(--secondary); background: rgba(var(--secondary-rgb), 0.1);">
+        <span class="layer-meta">L2</span> Ethernet MAC Header (Src: DevA_MAC | Dst: FF:FF:FF:FF:FF:FF)
+        <div style="font-size: 0.75rem; margin-top: 0.2rem; opacity: 0.9; color: var(--secondary);">
+          Destination MAC is the physical Layer 2 Broadcast address. Every node on the switch segment / VLAN receives this.
+        </div>
+      </div>
+      <div class="packet-layer eth" style="background: rgba(148, 216, 255, 0.15);">
+        <span class="layer-meta">L2</span> LLC Header (IEEE 802.2 DSAP: 0x82 | SSAP: 0x82 | Control: 0x03)
+      </div>
+      <div class="packet-layer bacnet">
+        <span class="layer-meta">L7</span> BACnet APDU (Who-Is Broadcast payload)
+      </div>
+      <div style="text-align: center; font-size: 0.75rem; color: var(--error); border: 1px dashed var(--error); padding: 0.5rem; margin-top: 0.5rem; border-radius: var(--radius-sm);">
+        Notice: Blocked by IP routers. Since there is no IP layer, BBMDs cannot bridge this. You must use a BACnet Router to cross segments.
       </div>
     `;
   }

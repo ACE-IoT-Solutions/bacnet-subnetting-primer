@@ -29,8 +29,7 @@
           </g>
         </svg>
         <div style="text-align: right;">
-          <h1 style="font-size: 1.85rem; font-weight: 800; margin-bottom: 0.15rem; line-height: 1.1; font-family: var(--font-heading); color: #fff; letter-spacing: -0.02em;">BACnet Network Calculator</h1>
-          <span style="font-size: 0.75rem; color: var(--primary); font-family: var(--font-heading); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;">By ACE IoT Solutions</span>
+          <h1 style="font-size: 1.85rem; font-weight: 800; margin-bottom: 0; line-height: 1.1; font-family: var(--font-heading); color: #fff; letter-spacing: -0.02em;">BACnet Network Calculator</h1>
         </div>
       </div>
       <p class="subtitle">Subnet boundaries have a big impact on BACnet networks. Use this interactive tool to visualize IP splits, test router behaviors, and simulate BBMD tunnels in real-time.</p>
@@ -379,11 +378,19 @@
           <div class="primer-card">
             <h4 class="primer-subheading">BACnet/Ethernet (ISO 8802-3)</h4>
             <p>BACnet/Ethernet is a <strong>Layer 2 (Data Link)</strong> protocol. Devices communicate directly using raw Ethernet frames and MAC addresses. It does not use IP addresses.</p>
-            <p><strong>Critical Limit:</strong> Because routers only forward Layer 3 (Network) traffic, BACnet/Ethernet frames <strong>cannot cross routers</strong>. They are strictly confined to the same physical switch segment (broadcast domain).</p>
+            <p><strong>Critical Limit:</strong> Because routers only forward Layer 3 (Network) traffic, BACnet/Ethernet frames <strong>cannot cross routers</strong>. They are strictly confined to the local physical switch segment or VLAN.</p>
+
+            <h4 class="primer-subheading" style="margin-top: 1.25rem;">BACnet/Ethernet Broadcasts</h4>
+            <p>For device discovery (Who-Is/I-Am), BACnet/Ethernet relies on the physical MAC broadcast address <strong><code>FF:FF:FF:FF:FF:FF</code></strong>.</p>
+            <ul style="padding-left: 1.25rem; font-size: 0.85rem; line-height: 1.5; color: var(--text-muted); margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
+              <li><strong>Local Confinement:</strong> Every device on the local network switch segment or VLAN receives the broadcast, but standard IP routers block L2 broadcasts completely.</li>
+              <li><strong>No BBMD Support:</strong> BBMDs are an IP-specific (Annex J) concept. Because BACnet/Ethernet has no Layer 3 IP header, BBMD tunnels cannot be used to forward these broadcasts across IP routers.</li>
+              <li><strong>Requires BACnet Routers:</strong> Bridging BACnet/Ethernet to other subnets requires a dedicated <em>BACnet Router</em> that parses and routes packets at the BACnet network layer, translating NPDUs to BACnet/IP or MS/TP.</li>
+            </ul>
             
             <h4 class="primer-subheading" style="margin-top: 1.5rem;">BACnet/IP (Annex J)</h4>
             <p>BACnet/IP wraps BACnet frames inside standard <strong>UDP/IP (Layer 3 & 4)</strong> packets (usually on port <code>47808</code> / <code>0xBAC0</code>).</p>
-            <p><strong>Benefit:</strong> Because it uses IP, BACnet/IP can traverse routers, allowing BACnet traffic to scale across large campus buildings and corporate WAN networks.</p>
+            <p><strong>Benefit:</strong> Because it uses IP, BACnet/IP can traverse routers, allowing BACnet traffic to scale across large campus networks, and it can leverage BBMDs to tunnel broadcasts across subnets.</p>
           </div>
           
           <div class="primer-card">
@@ -394,7 +401,8 @@
               <button class="osi-toggle-btn active bacnet-ip" id="btn-osi-ip-local-uc" style="font-size: 0.75rem; padding: 0.4rem 0.5rem;">BACnet/IP Local Unicast</button>
               <button class="osi-toggle-btn bacnet-ip" id="btn-osi-ip-routed-uc" style="font-size: 0.75rem; padding: 0.4rem 0.5rem;">BACnet/IP Routed Unicast</button>
               <button class="osi-toggle-btn bacnet-ip" id="btn-osi-ip-bbmd-tunnel" style="font-size: 0.75rem; padding: 0.4rem 0.5rem;">BBMD Tunnel Forward</button>
-              <button class="osi-toggle-btn bacnet-eth" id="btn-osi-eth" style="font-size: 0.75rem; padding: 0.4rem 0.5rem;">BACnet/Ethernet Frame</button>
+              <button class="osi-toggle-btn bacnet-eth" id="btn-osi-eth-uc" style="font-size: 0.75rem; padding: 0.4rem 0.5rem;">BACnet/Ethernet Unicast</button>
+              <button class="osi-toggle-btn bacnet-eth" id="btn-osi-eth-bc" style="font-size: 0.75rem; padding: 0.4rem 0.5rem; grid-column: span 2;">BACnet/Ethernet Broadcast</button>
             </div>
 
             <div class="diagram-block" style="min-height: 230px;">
