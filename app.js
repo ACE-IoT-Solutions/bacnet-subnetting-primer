@@ -2092,6 +2092,24 @@ function updatePlannerPreviews() {
     }
   }
 
+  // VLAN 1-to-1 Validation
+  const vlanMap = {};
+  plannerState.subnets.forEach(sub => {
+    if (sub.vlan) {
+      if (!vlanMap[sub.vlan]) {
+        vlanMap[sub.vlan] = [];
+      }
+      vlanMap[sub.vlan].push(sub.name);
+    }
+  });
+
+  const duplicateVlans = [];
+  Object.keys(vlanMap).forEach(vlan => {
+    if (vlanMap[vlan].length > 1) {
+      duplicateVlans.push(`Warning: Subnets [${vlanMap[vlan].join(', ')}] are assigned to the same VLAN (VLAN ${vlan}). Standard OT designs map each IP subnet 1-to-1 to a unique VLAN.`);
+    }
+  });
+
   ipValidationErrors.forEach(err => {
     addPlannerAlert(err, 'error');
     hasErrors = true;
@@ -2099,6 +2117,10 @@ function updatePlannerPreviews() {
   overlaps.forEach(err => {
     addPlannerAlert(err, 'error');
     hasErrors = true;
+  });
+  duplicateVlans.forEach(err => {
+    addPlannerAlert(err, 'warning');
+    hasWarnings = true;
   });
 
   const enabledBbmds = plannerState.subnets.filter(s => s.bbmdEnabled);
