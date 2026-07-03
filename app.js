@@ -2198,6 +2198,7 @@ function addPlannerAlert(text, type) {
   dom.plannerValidationAlerts.appendChild(alert);
 }
 
+
 // Export the design using SheetJS with styling
 function exportPlannerXlsx() {
   if (plannerState.subnets.length === 0) {
@@ -2207,13 +2208,18 @@ function exportPlannerXlsx() {
 
   // Style Constants matching ACE IoT Brand Colors (Charcoal background, white text, lime highlights)
   const STYLES = {
+    brandHeader: {
+      font: { name: 'Segoe UI', sz: 12, bold: true, color: { rgb: 'C1D200' } }, // Brand Lime Green
+      fill: { patternType: 'solid', fgColor: { rgb: '0F172A' } }, // Slate 900
+      alignment: { vertical: 'center', horizontal: 'left', indent: 1 }
+    },
     title: {
-      font: { name: 'Segoe UI', sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+      font: { name: 'Segoe UI', sz: 15, bold: true, color: { rgb: 'FFFFFF' } },
       fill: { patternType: 'solid', fgColor: { rgb: '0F172A' } }, // Slate 900
       alignment: { vertical: 'center', horizontal: 'left', indent: 1 }
     },
     subtitle: {
-      font: { name: 'Segoe UI', sz: 10, italic: true, color: { rgb: '94A3B8' } },
+      font: { name: 'Segoe UI', sz: 9.5, italic: true, color: { rgb: '94A3B8' } },
       fill: { patternType: 'solid', fgColor: { rgb: '0F172A' } }, // Slate 900
       alignment: { vertical: 'center', horizontal: 'left', indent: 1 }
     },
@@ -2333,8 +2339,9 @@ function exportPlannerXlsx() {
 
     // 1. Summary Sheet Setup
     const summaryRows = [
-      [makeCell("BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", ""],
-      [makeCell(`Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions`, "subtitle"), "", "", "", "", "", ""],
+      [makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", ""],
+      [makeCell("  BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", ""],
+      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", ""],
       [], // spacer
       [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", ""],
       [
@@ -2382,7 +2389,7 @@ function exportPlannerXlsx() {
     summaryRows.push([]);
     
     // BDT schedule segment
-    const bdtSectionHeaderRow = 7 + plannerState.subnets.length;
+    const bdtSectionHeaderRow = 8 + plannerState.subnets.length;
 
     summaryRows.push([makeCell("Global Broadcast Distribution Table (BDT) Schedule", "sectionHeader"), "", "", "", "", "", ""]);
     summaryRows.push([
@@ -2460,9 +2467,10 @@ function exportPlannerXlsx() {
 
     // Merges
     const summaryMerges = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // Title
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }, // Subtitle
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } }, // Section 1 Header
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // Brand Header
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }, // Title
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } }, // Subtitle
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 6 } }, // Section 1 Header
       { s: { r: bdtSectionHeaderRow, c: 0 }, e: { r: bdtSectionHeaderRow, c: 6 } }, // Section 2 Header
       { s: { r: brandHeaderRow, c: 0 }, e: { r: brandHeaderRow, c: 6 } }, // Brand Header
       { s: { r: brandBodyRow, c: 0 }, e: { r: brandBodyRow, c: 6 } }  // Brand Body
@@ -2479,9 +2487,11 @@ function exportPlannerXlsx() {
     for (let r = 0; r <= brandBodyRow; r++) {
       summaryRowHeights.push({ hpt: 20 });
     }
-    summaryRowHeights[0] = { hpt: 35 };
-    summaryRowHeights[1] = { hpt: 22 };
-    summaryRowHeights[3] = { hpt: 25 };
+    summaryRowHeights[0] = { hpt: 22 }; // Brand Header height
+    summaryRowHeights[1] = { hpt: 30 }; // Title height
+    summaryRowHeights[2] = { hpt: 20 }; // Subtitle height
+    summaryRowHeights[3] = { hpt: 12 }; // spacer row height
+    summaryRowHeights[4] = { hpt: 25 };
     summaryRowHeights[bdtSectionHeaderRow] = { hpt: 25 };
     summaryRowHeights[brandHeaderRow] = { hpt: 25 };
     summaryRowHeights[brandBodyRow] = { hpt: 130 }; // Big description height
@@ -2498,8 +2508,9 @@ function exportPlannerXlsx() {
       const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
       const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : "None";
 
-      subnetRows.push([makeCell(`Subnet Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
-      subnetRows.push([makeCell(`Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}`, "subtitle"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell(`  Subnet Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell(`  Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}`, "subtitle"), "", "", "", "", "", "", ""]);
       subnetRows.push([]); // spacer
       subnetRows.push([
         makeCell("Subnet Configuration Details", "sectionHeader"), "", "", 
@@ -2627,30 +2638,33 @@ function exportPlannerXlsx() {
 
       // Merges
       const subnetMerges = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Title
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Subtitle
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 1 } }, // Info Section Header
-        { s: { r: 3, c: 3 }, e: { r: 3, c: 5 } }  // BDT Section Header
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Brand Header
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Title
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }, // Subtitle
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } }, // Info Section Header
+        { s: { r: 4, c: 3 }, e: { r: 4, c: 5 } }  // BDT Section Header
       ];
 
       if (!sub.bbmdEnabled) {
-        subnetMerges.push({ s: { r: 4, c: 3 }, e: { r: 4, c: 5 } });
         subnetMerges.push({ s: { r: 5, c: 3 }, e: { r: 5, c: 5 } });
         subnetMerges.push({ s: { r: 6, c: 3 }, e: { r: 6, c: 5 } });
         subnetMerges.push({ s: { r: 7, c: 3 }, e: { r: 7, c: 5 } });
+        subnetMerges.push({ s: { r: 8, c: 3 }, e: { r: 8, c: 5 } });
       }
 
       wsSubnet['!merges'] = subnetMerges;
       
       // Row Heights
       const subnetRowHeights = [];
-      const dataHeaderRow = 3 + 4 + (sub.bbmdEnabled && otherBbmds.length > 3 ? otherBbmds.length - 3 : 0) + 2;
+      const dataHeaderRow = 4 + 4 + (sub.bbmdEnabled && otherBbmds.length > 3 ? otherBbmds.length - 3 : 0) + 3;
       for (let r = 0; r <= dataHeaderRow; r++) {
         subnetRowHeights.push({ hpt: 20 });
       }
-      subnetRowHeights[0] = { hpt: 35 };
-      subnetRowHeights[1] = { hpt: 22 };
-      subnetRowHeights[3] = { hpt: 25 };
+      subnetRowHeights[0] = { hpt: 22 };
+      subnetRowHeights[1] = { hpt: 30 };
+      subnetRowHeights[2] = { hpt: 20 };
+      subnetRowHeights[3] = { hpt: 12 }; // spacer row height
+      subnetRowHeights[4] = { hpt: 25 }; // Info & BDT Header
       subnetRowHeights[dataHeaderRow] = { hpt: 25 }; // Table Header
       
       wsSubnet['!rows'] = subnetRowHeights;
