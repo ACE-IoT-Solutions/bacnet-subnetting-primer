@@ -2148,7 +2148,8 @@ function addPlannerSubnet() {
     bbmdOffset: 10,
     bmsPlaced: false,
     bmsRole: 'none',
-    fdrTargetSubnetId: ''
+    fdrTargetSubnetId: '',
+    plannedDevices: 0
   });
   
   renderSubnetList();
@@ -2431,12 +2432,12 @@ function updatePlannerPreviews() {
   
   plannerState.subnets.forEach((sub, i) => {
     const details = getSubnetDetails(sub.ip, sub.cidr);
-    const limit = details ? (sub.cidr >= 24 ? details.numHosts : Math.min(details.numHosts, 100)) : 0;
+    const plannedCount = sub.plannedDevices || (details ? details.numHosts : 0);
     const vlanStr = sub.vlan ? `VLAN ${sub.vlan}` : 'No VLAN';
     structureHtml += `
       <div class="sheet-item subnet" style="margin-top: 0.25rem;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
-        <span>Sheet ${i + 2}: <strong>${escapeHtml(sub.name.substring(0, 18))}</strong> (${vlanStr}, ${limit} IPs planned)</span>
+        <span>Sheet ${i + 2}: <strong>${escapeHtml(sub.name.substring(0, 18))}</strong> (${vlanStr}, ${plannedCount} IPs planned)</span>
       </div>
     `;
   });
@@ -2896,7 +2897,8 @@ function exportPlannerXlsx() {
       ]);
 
       if (details) {
-        const limit = sub.cidr >= 24 ? details.numHosts : Math.min(details.numHosts, 100);
+        const plannedIps = sub.plannedDevices || details.numHosts;
+        const limit = details.numHosts <= 1024 ? details.numHosts : Math.min(details.numHosts, Math.max(plannedIps, 100));
         const startLong = details.firstUsableLong;
 
         for (let offset = 0; offset < limit; offset++) {
