@@ -40,16 +40,19 @@ To run the application locally, you can use the Vite server configured in `packa
    ```
 3. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-Alternatively, because the app is built on standard HTML/JS/CSS modules, you can serve it using any simple static web server (such as Python's HTTP server):
+Alternatively, because the app is built on standard HTML/JS/CSS modules, you can serve it locally using any simple static web server (such as Python's HTTP server):
 ```bash
-python3 -m http.server 8000
+python3 -m http.server --bind 127.0.0.1 8000
 ```
+
+> [!TIP]
+> **LAN Sharing:** To expose the servers to your local network (LAN) for testing on mobile or other devices, run `npx vite --host` or `python3 -m http.server --bind 0.0.0.0 8000`.
 
 ## GitHub Pages Deployment
 
-To deploy this project to GitHub Pages:
+This project includes an automated GitHub Actions workflow to build and deploy the application.
 
-1. Push this project to a GitHub repository.
-2. In the repository settings, go to the **Pages** section.
-3. Under **Build and deployment**, select **Deploy from a branch** and choose your branch (e.g., `main`), targeting the root `/` folder.
-4. Save, and GitHub will automatically build and host the calculator.
+To deploy:
+1. Push or merge changes to the `deploy` branch.
+2. The GitHub Actions workflow defined in [.github/workflows/deploy.yml](file:///.github/workflows/deploy.yml) will automatically run, installing dependencies via `npm ci`, compiling the production bundle, and deploying the resulting `dist/` directory.
+3. In your GitHub repository settings under **Pages**, ensure that **Build and deployment** -> **Source** is set to **GitHub Actions**.

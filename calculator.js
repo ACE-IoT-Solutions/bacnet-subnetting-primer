@@ -7,8 +7,12 @@
 // Convert IP string to 32-bit unsigned integer (using >>> 0 to ensure unsigned 32-bit)
 export function ipToLong(ip) {
   if (!ip) return null;
-  const parts = ip.trim().split('.').map(Number);
-  if (parts.length !== 4 || parts.some(isNaN) || parts.some(p => p < 0 || p > 255)) {
+  const trimmed = ip.trim();
+  if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed)) {
+    return null;
+  }
+  const parts = trimmed.split('.').map(Number);
+  if (parts.some(p => p < 0 || p > 255)) {
     return null;
   }
   return ((parts[0] << 24) >>> 0) +
@@ -92,8 +96,8 @@ export function getSubnetDetails(ipStr, cidrOrMask) {
   const wildcard = (~mask) >>> 0;
   const broadcast = (network | wildcard) >>> 0;
   
-  let firstUsable = 0;
-  let lastUsable = 0;
+  let firstUsable = null;
+  let lastUsable = null;
   let numHosts = 0;
 
   if (cidr < 31) {
@@ -121,9 +125,9 @@ export function getSubnetDetails(ipStr, cidrOrMask) {
     networkLong: network,
     broadcast: longToIp(broadcast),
     broadcastLong: broadcast,
-    firstUsable: firstUsable ? longToIp(firstUsable) : 'N/A',
+    firstUsable: firstUsable !== null ? longToIp(firstUsable) : 'N/A',
     firstUsableLong: firstUsable,
-    lastUsable: lastUsable ? longToIp(lastUsable) : 'N/A',
+    lastUsable: lastUsable !== null ? longToIp(lastUsable) : 'N/A',
     lastUsableLong: lastUsable,
     numHosts
   };

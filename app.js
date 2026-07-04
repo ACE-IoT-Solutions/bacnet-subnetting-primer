@@ -2768,11 +2768,20 @@ function exportPlannerXlsx() {
     }
   };
 
-  const makeCell = (val, styleName) => ({
-    v: val === null || val === undefined ? "" : val,
-    t: typeof val === 'number' ? 'n' : 's',
-    s: STYLES[styleName] || STYLES.dataCell
-  });
+  const makeCell = (val, styleName) => {
+    let sanitizedVal = val;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed.startsWith('=') || trimmed.startsWith('+') || trimmed.startsWith('-') || trimmed.startsWith('@')) {
+        sanitizedVal = `'` + val;
+      }
+    }
+    return {
+      v: sanitizedVal === null || sanitizedVal === undefined ? "" : sanitizedVal,
+      t: typeof sanitizedVal === 'number' ? 'n' : 's',
+      s: STYLES[styleName] || STYLES.dataCell
+    };
+  };
 
   try {
     const wb = XLSX.utils.book_new();
