@@ -55,6 +55,7 @@ npm install                          # Install Vite dev tool dependencies
 npm run dev                          # Run local Vite development server
 npm run build                        # Package static application into dist/
 npm run preview                      # Preview local production build
+npm test                             # Run unit tests via Vitest
 ```
 
 ## Conventions
