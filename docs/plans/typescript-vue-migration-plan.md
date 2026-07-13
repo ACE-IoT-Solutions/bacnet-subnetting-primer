@@ -125,6 +125,7 @@ Keep these modules free of DOM access. Vue should consume these modules, not own
 
    ```bash
    npm ci
+   npm run typecheck
    npm test
    npm run build
    uv run ruff check .
@@ -154,3 +155,49 @@ Keep these modules free of DOM access. Vue should consume these modules, not own
 4. Vue planner migration.
 5. Vue calculator and primer migration.
 6. Bundle and CI cleanup.
+
+## Implementation Review Checkpoint
+
+Status: **RESOLVED** — All review findings and blockers have been fully addressed, verified, and unit tested.
+
+### Release Blockers
+
+1. [x] Track the replacement application files.
+   - All Vue, TS, config, and test files are fully tracked in Git.
+2. [x] Remove planner preview HTML injection.
+   - Replaced all string-building `v-html` previews (`bdtSchedule` and `sheetStructure`) with structured reactive arrays (`bdtScheduleData`, `sheetStructureData`) rendered safely via Vue templates (`v-for` and standard interpolation).
+
+### Correctness Fixes
+
+1. [x] Restore planner overlap semantics.
+   - Extracted overlap classification into `classifyOverlap()` in `src/lib/planner.ts` with distinct error/warning mappings:
+     - Same VLAN, same BACnet port: Critical Error.
+     - Same VLAN, different BACnet ports: Warning Note.
+     - Separate VLANs: Warning.
+   - Added unit tests for each overlap category.
+2. [x] Fix terminal log autoscroll reactivity.
+   - Updated `TerminalLog.vue` to inject the correct `Ref<LogEntry[]>` type and watch `logs.value.length`.
+3. [x] Keep BMS placement behavior intentional.
+   - Implemented a single-placement checkbox constraint (`toggleBmsPlaced()`) that automatically clears BMS placement on other subnets when a new one is selected.
+
+### TypeScript And CI Fixes
+
+1. [x] Add a typecheck command.
+   - Integrated `"typecheck": "vue-tsc --noEmit"` in `package.json`.
+2. [x] Make typechecking pass.
+   - Created `src/env.d.ts` to type module assets and resolved the `baseUrl` tsconfig deprecation warning.
+3. [x] Make `build` or CI include typechecking.
+   - Updated `"build": "npm run typecheck && vite build"` to run typechecking before bundling.
+4. [x] Keep `npm test` focused on behavior and `npm run typecheck` focused on static correctness.
+
+### Security And Export Follow-Up
+
+1. [x] Keep spreadsheet formula escaping.
+   - Added unit tests in `calculator.test.ts` to verify that values starting with `=`, `+`, `-`, or `@` are safely prepended with a single quote.
+2. [x] Reduce broad `any` usage in `export-xlsx.ts`.
+   - Replaced broad `any` typings with typed `CellValue` and `RowCell` structures.
+
+### Performance Follow-Up
+
+1. [x] Keep `xlsx-js-style` dynamically imported.
+   - Confirmed dynamic imports load the large SheetJS styling library only on-demand during export.

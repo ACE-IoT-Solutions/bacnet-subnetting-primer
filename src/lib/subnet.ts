@@ -4,8 +4,36 @@
  * and subnet calculations.
  */
 
-// Convert IP string to 32-bit unsigned integer (using >>> 0 to ensure unsigned 32-bit)
-export function ipToLong(ip) {
+export interface SubnetDetails {
+  ip: string;
+  ipLong: number;
+  mask: string;
+  maskLong: number;
+  cidr: number;
+  network: string;
+  networkLong: number;
+  broadcast: string;
+  broadcastLong: number;
+  firstUsable: string;
+  firstUsableLong: number | null;
+  lastUsable: string;
+  lastUsableLong: number | null;
+  numHosts: number;
+}
+
+export interface SubnetRelationship {
+  aThinksBInSubnet: boolean;
+  bThinksAInSubnet: boolean;
+  sameBroadcast: boolean;
+  sameSubnet: boolean;
+  broadcastIntersectionTrap: boolean;
+  asymmetricalSubnet: boolean;
+  overlappingSubnet: boolean;
+  isolated: boolean;
+}
+
+// Convert IP string to 32-bit unsigned integer
+export function ipToLong(ip: string | null | undefined): number | null {
   if (!ip) return null;
   const trimmed = ip.trim();
   if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed)) {
@@ -22,7 +50,7 @@ export function ipToLong(ip) {
 }
 
 // Convert 32-bit unsigned integer to IP string
-export function longToIp(long) {
+export function longToIp(long: number): string {
   return [
     (long >>> 24) & 255,
     (long >>> 16) & 255,
@@ -32,14 +60,14 @@ export function longToIp(long) {
 }
 
 // Convert CIDR suffix (e.g. 24) to 32-bit subnet mask
-export function cidrToMask(cidr) {
+export function cidrToMask(cidr: number): number {
   if (cidr === 0) return 0;
   if (cidr === 32) return 0xFFFFFFFF >>> 0;
   return (~((1 << (32 - cidr)) - 1)) >>> 0;
 }
 
 // Convert 32-bit subnet mask to CIDR suffix
-export function maskToCidr(mask) {
+export function maskToCidr(mask: number): number {
   let count = 0;
   let temp = mask >>> 0;
   for (let i = 0; i < 32; i++) {
@@ -54,21 +82,17 @@ export function maskToCidr(mask) {
 }
 
 // Validate subnet mask string (e.g. "255.255.255.0")
-export function validateMaskString(maskStr) {
+export function validateMaskString(maskStr: string): boolean {
   const long = ipToLong(maskStr);
   if (long === null) return false;
   
-  // A valid subnet mask must consist of contiguous 1 bits followed by contiguous 0 bits.
-  // Negating the mask and adding 1 should yield a power of 2.
   const inverted = (~long) >>> 0;
-  // If mask is all 1s (255.255.255.255), inverted is 0. 0 is fine.
   if (inverted === 0) return true;
-  // Check if power of 2
   return ((inverted + 1) & inverted) === 0;
 }
 
 // Convert mask long or string to CIDR
-export function getMaskCidr(maskInput) {
+export function getMaskCidr(maskInput: number | string): number | null {
   if (typeof maskInput === 'number') {
     return maskToCidr(maskInput);
   }
@@ -78,11 +102,11 @@ export function getMaskCidr(maskInput) {
 }
 
 // Get network details
-export function getSubnetDetails(ipStr, cidrOrMask) {
+export function getSubnetDetails(ipStr: string, cidrOrMask: number | string): SubnetDetails | null {
   const ip = ipToLong(ipStr);
   if (ip === null) return null;
 
-  let mask;
+  let mask: number | null;
   if (typeof cidrOrMask === 'number') {
     if (cidrOrMask < 0 || cidrOrMask > 32) return null;
     mask = cidrToMask(cidrOrMask);
@@ -96,8 +120,8 @@ export function getSubnetDetails(ipStr, cidrOrMask) {
   const wildcard = (~mask) >>> 0;
   const broadcast = (network | wildcard) >>> 0;
   
-  let firstUsable = null;
-  let lastUsable = null;
+  let firstUsable: number | null = null;
+  let lastUsable: number | null = null;
   let numHosts = 0;
 
   if (cidr < 31) {
@@ -105,7 +129,6 @@ export function getSubnetDetails(ipStr, cidrOrMask) {
     lastUsable = (broadcast - 1) >>> 0;
     numHosts = lastUsable - firstUsable + 1;
   } else if (cidr === 31) {
-    // RFC 3021
     firstUsable = network;
     lastUsable = broadcast;
     numHosts = 2;
@@ -134,33 +157,16 @@ export function getSubnetDetails(ipStr, cidrOrMask) {
 }
 
 // Analyze the relationship between two device subnet configurations
-export function analyzeRelationship(devA, devB) {
+export function analyzeRelationship(devA: SubnetDetails | null, devB: SubnetDetails | null): SubnetRelationship | null {
   if (!devA || !devB) return null;
 
-  // Does A think B is in its subnet?
   const aThinksBInSubnet = (devB.ipLong & devA.maskLong) >>> 0 === devA.networkLong;
-  
-  // Does B think A is in its subnet?
   const bThinksAInSubnet = (devA.ipLong & devB.maskLong) >>> 0 === devB.networkLong;
-
-  // Do they share the exact same broadcast address?
   const sameBroadcast = devA.broadcastLong === devB.broadcastLong;
-
-  // Are they in the exact same subnet?
   const sameSubnet = aThinksBInSubnet && bThinksAInSubnet && (devA.networkLong === devB.networkLong) && (devA.cidr === devB.cidr);
-
-  // Is there a broadcast intersection trap?
-  // (Different subnets, but they share the same broadcast address)
   const broadcastIntersectionTrap = !sameSubnet && sameBroadcast;
-
-  // Asymmetrical subnet mask configuration
-  // (One thinks they are in the same subnet, but the other does not)
   const asymmetricalSubnet = aThinksBInSubnet !== bThinksAInSubnet;
-
-  // Symmetrical overlapping subnets (both think local, but different masks)
   const overlappingSubnet = !sameSubnet && aThinksBInSubnet && bThinksAInSubnet;
-
-  // Completely isolated networks (different subnets, different broadcasts, neither thinks local)
   const isolated = !aThinksBInSubnet && !bThinksAInSubnet && !sameBroadcast;
 
   return {
@@ -176,7 +182,16 @@ export function analyzeRelationship(devA, devB) {
 }
 
 // Convert 32-bit value to binary string with space separator every 8 bits
-export function toBinaryString(longVal) {
+export function toBinaryString(longVal: number): string {
   const binary = (longVal >>> 0).toString(2).padStart(32, '0');
   return `${binary.slice(0, 8)}.${binary.slice(8, 16)}.${binary.slice(16, 24)}.${binary.slice(24, 32)}`;
+}
+
+// Get IP by host offset inside network range
+export function getOffsetIp(networkIp: string, cidr: number, offset: number): string {
+  const details = getSubnetDetails(networkIp, cidr);
+  if (!details) return '';
+  const targetLong = (details.networkLong + offset) >>> 0;
+  if (targetLong > details.broadcastLong) return '';
+  return longToIp(targetLong);
 }

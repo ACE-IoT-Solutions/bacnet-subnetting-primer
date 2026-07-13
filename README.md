@@ -13,13 +13,14 @@ This is designed for control engineers, network integrators, and building automa
   - **Asymmetrical Subnets:** Where subnet mask mismatch causes one-way local routing conflicts.
   - **Isolated Subnets:** Standard routed separation requiring BBMD configuration.
 - **Live Network Simulator:** Send simulated Who-Is (Broadcast) and ReadProperty (Unicast) packets and trace their paths across switches, routers, and BBMD tunnels in real-time.
+- **Network Diagram Builder:** Document any number of subnets, devices with multiple NICs and multiple addresses per NIC, routers, switches, firewalls, gateways, and BBMDs in a live topology. Draw ordered connectivity tests through intermediate hops, distinguish successful and unsuccessful paths, surface address warnings, and export shareable SVG, PDF, or editable JSON files.
 - **Interactive Networking Primer:**
   - **Layer 2 vs Layer 3:** Compares BACnet/Ethernet (MAC-level) vs BACnet/IP (UDP-level) with an interactive encapsulation packet inspector.
   - **BBMD Tunneling Simulator:** Traces how BACnet Broadcast Management Devices encapsulate and tunnel broadcasts across IP routers.
 
 ## Technology Stack
 
-- **Core:** HTML5, modern ESM JavaScript (ES6+ Modules)
+- **Core:** Vue 3, TypeScript, and modern ESM modules
 - **Styling:** Custom responsive CSS3 with glassmorphism effects and modern typography
 - **Graphics:** Dynamic animated vector SVGs for all diagram elements
 - **Local Dev Server:** Vite (optional, zero-config)

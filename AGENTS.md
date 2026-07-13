@@ -23,14 +23,27 @@ Conventions and daily commands for contributors/agents working on this repositor
 ├── README.md                  # user documentation
 ├── pyproject.toml             # uv & Python packaging config
 ├── package.json               # Node dev tools config
+├── tsconfig.json              # TypeScript compilation config
+├── vite.config.js             # Vite compiler and Vue configuration
 ├── .python-version            # 3.13
 ├── index.html                 # main application template
 ├── style.css                  # application styling
-├── calculator.js              # core network calculation logic
-├── app.js                     # frontend event controller & animations
-└── src/bacnet_network_calculator/
-    ├── __init__.py
-    └── main.py                # Python web server entry point
+├── dist/                      # compiled browser-ready production assets
+├── src/
+│   ├── main.ts                # Application entrypoint
+│   ├── App.vue                # Main application component layout
+│   ├── components/            # Vue Page and UI components
+│   │   ├── CalculatorPage.vue
+│   │   ├── PrimerPage.vue
+│   │   ├── PlannerPage.vue
+│   │   └── TerminalLog.vue
+│   ├── lib/                   # TypeScript helper modules
+│   │   ├── subnet.ts          # IP calculations library
+│   │   ├── planner.ts         # Planner logic & auto-size algorithm
+│   │   └── export-xlsx.ts     # Dynamic Excel sheet builder
+│   └── bacnet_network_calculator/
+│       ├── __init__.py
+│       └── main.py            # Python web server entry point
 ```
 
 - Keep frontend files clean, modular, and performant.
@@ -60,7 +73,8 @@ npm test                             # Run unit tests via Vitest
 
 ## Conventions
 
-- Validate IP inputs at the network boundary (`calculator.js`).
-- Linear packet interpolation is driven dynamically by coordinate maps inside `app.js` using `requestAnimationFrame`.
+- Validate IP inputs at the network boundary (`src/lib/subnet.ts`).
+- Linear packet interpolation is driven dynamically by coordinate maps using `requestAnimationFrame` inside Vue components.
+- State management and previews are handled reactively by Vue 3 components.
 - Follow semantic versioning for releases.
 - All documentation updates go to `README.md` or dedicated `docs/` files, never loose markdown in root.

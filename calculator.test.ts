@@ -8,7 +8,8 @@ import {
   getMaskCidr,
   getSubnetDetails,
   analyzeRelationship
-} from './calculator.js';
+} from './src/lib/subnet';
+import { makeCell } from './src/lib/export-xlsx';
 
 describe('IPv4 parsing (ipToLong and longToIp)', () => {
   it('should parse valid IPv4 strings correctly', () => {
@@ -147,5 +148,22 @@ describe('Subnet relationship classification (analyzeRelationship)', () => {
     const rel = analyzeRelationship(devA, devB);
     expect(rel.isolated).toBe(true);
     expect(rel.sameSubnet).toBe(false);
+  });
+});
+
+describe('Spreadsheet CSV/Formula Injection Sanitization (makeCell)', () => {
+  it('should prepend a single quote to values starting with formula characters', () => {
+    expect(makeCell('=SUM(A1:A5)', 'dataCell').v).toBe("'=SUM(A1:A5)");
+    expect(makeCell('+100', 'dataCell').v).toBe("'+100");
+    expect(makeCell('-50', 'dataCell').v).toBe("'-50");
+    expect(makeCell('@REF', 'dataCell').v).toBe("'@REF");
+  });
+
+  it('should not escape normal strings or values', () => {
+    expect(makeCell('Subnet 1', 'dataCell').v).toBe("Subnet 1");
+    expect(makeCell(123, 'dataCell').v).toBe(123);
+    expect(makeCell(true, 'dataCell').v).toBe(true);
+    expect(makeCell('', 'dataCell').v).toBe("");
+    expect(makeCell(null, 'dataCell').v).toBe("");
   });
 });

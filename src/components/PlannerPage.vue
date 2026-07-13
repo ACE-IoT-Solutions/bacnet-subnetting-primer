@@ -1,0 +1,720 @@
+<template>
+  <div style="display: flex; flex-direction: column; gap: 1.5rem; width: 100%;">
+
+    <!-- Planner Description -->
+    <div class="glass-card" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 26px; height: 26px;">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="9" y1="3" x2="9" y2="21"></line>
+          <line x1="15" y1="3" x2="15" y2="21"></line>
+          <line x1="3" y1="9" x2="21" y2="9"></line>
+          <line x1="3" y1="15" x2="21" y2="15"></line>
+        </svg>
+        <h2 style="font-family: var(--font-heading); font-size: 1.35rem; color: #fff; margin: 0;">Multi-Subnet BACnet Network Planner</h2>
+      </div>
+      <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.55; max-width: 900px;">
+        Design complex multi-subnet BACnet systems, define communications between them, and generate structured Excel design spreadsheets. The exported spreadsheet contains a master summary sheet, a global BDT routing schedule, and pre-populated subnet device log sheets to track IP allocations, device IDs, and object counts.
+      </p>
+    </div>
+
+    <!-- Grid layout: left column for Subnet Config cards, right column for preview and download -->
+    <div class="planner-grid-container">
+
+      <!-- Left side: Subnets Management -->
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; width: 100%;">
+          <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
+            <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #fff; margin: 0;">Configured Subnets</h3>
+            <label style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; margin: 0; user-select: none;">
+              <input type="checkbox" v-model="splitHorizon" style="cursor: pointer;">
+              Split Horizon Routing Mode
+            </label>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <!-- Primary Action: Add Subnet (Lime) -->
+            <AppButton variant="primary" @click="addSubnet" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 15px; height: 15px; margin-right: 0.5rem;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </template>
+              <span style="white-space: nowrap;">Add Subnet</span>
+            </AppButton>
+
+            <!-- Secondary Action: Quick Setup Wizard (Blue) -->
+            <AppButton variant="secondary" @click="showWizard = true" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
+              <template #icon>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px; margin-right: 0.5rem;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+              </template>
+              <span style="white-space: nowrap;">Quick Setup Wizard</span>
+            </AppButton>
+
+            <!-- Utility Action: Reset (Outline/Glass) -->
+            <AppButton variant="default" @click="resetToDefaults" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);" title="Reset Planner to Default Example Subnets">
+              <span style="white-space: nowrap;">Reset</span>
+            </AppButton>
+
+            <!-- Utility Action: Clear All (Subtle Red Outline/Glass) -->
+            <AppButton variant="default" @click="clearAllSubnets" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md); border-color: rgba(239, 68, 68, 0.45); color: #f87171;" title="Clear All Subnets">
+              <span style="white-space: nowrap;">Clear All</span>
+            </AppButton>
+          </div>
+        </div>
+
+        <div id="planner-subnets-list" style="display: flex; flex-direction: column; gap: 1rem;">
+          <!-- Subnet Card -->
+          <div v-for="sub in subnets" :key="sub.id" class="planner-subnet-card">
+            <div class="planner-card-header">
+              <input type="text" v-model="sub.name" style="font-family: var(--font-heading); font-weight: bold; font-size: 1rem; border: none; background: transparent; color: #fff; width: 80%; padding: 0.2rem; border-bottom: 1px dashed transparent;" placeholder="Subnet Name">
+              <button class="planner-btn-delete" title="Delete Subnet" @click="deleteSubnet(sub.id)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+              </button>
+            </div>
+
+            <div class="planner-card-grid">
+              <!-- Left Column: IP Configuration -->
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="display: flex; gap: 0.6rem;">
+                  <div class="form-group" style="margin-bottom: 0; flex: 1.8;">
+                    <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet IP & Mask</label>
+                    <div style="display: flex; gap: 0.3rem; align-items: center;">
+                      <input type="text" v-model="sub.ip" style="flex: 2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 192.168.1.0">
+                      <select v-model.number="sub.cidr" style="flex: 1.2; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;">
+                        <option v-for="c in cidrOptions" :key="c" :value="c">/{{ c }}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0; flex: 0.8;">
+                    <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">VLAN ID</label>
+                    <input type="number" v-model.number="sub.vlan" min="1" max="4094" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 10">
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0; flex: 1;">
+                    <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">BACnet Port</label>
+                    <input type="number" v-model.number="sub.port" min="1024" max="65535" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="47808">
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Gateway Host Offset (.{{ sub.gatewayOffset }})</label>
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="number" v-model.number="sub.gatewayOffset" min="1" max="254" style="width: 70px; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset) || 'Invalid' }}</strong></span>
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0; margin-top: 0.25rem;">
+                  <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Planned Device Count (for Construction)</label>
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="number" v-model.number="sub.plannedDevices" min="0" max="65530" style="width: 100px; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 20">
+                    <AppButton variant="secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; flex: none; min-width: auto; height: auto;" @click.prevent="autoSizeSubnet(sub)">Auto-Size</AppButton>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Column: BACnet Configuration -->
+              <div style="display: flex; flex-direction: column; gap: 0.6rem; border-left: 1px solid rgba(255, 255, 255, 0.05); padding-left: 1rem;">
+                <!-- BBMD configuration -->
+                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer; margin: 0;">
+                  <input type="checkbox" v-model="sub.bbmdEnabled">
+                  Enable BBMD Router
+                </label>
+
+                <div v-if="sub.bbmdEnabled" style="margin-left: 1.25rem;">
+                  <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">BBMD Host Offset (.{{ sub.bbmdOffset }})</label>
+                  <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                    <input type="number" v-model.number="sub.bbmdOffset" min="1" max="254" style="width: 70px; padding: 0.25rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.8rem;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) || 'Invalid' }}</strong></span>
+                  </div>
+
+                  <!-- Split Horizon Targets selection -->
+                  <div v-if="splitHorizon" style="margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.08);">
+                    <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Route Broadcasts to BBMDs:</label>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem;">
+                      <div v-for="obs in otherBbmdSubnets(sub)" :key="obs.id">
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0; color: var(--text-secondary);">
+                          <input type="checkbox" :checked="isRouteTarget(sub, obs.id)" @change="toggleRouteTarget(sub, obs.id)">
+                          {{ obs.name }}
+                        </label>
+                      </div>
+                      <div v-if="otherBbmdSubnets(sub).length === 0" style="font-size: 0.72rem; color: var(--text-muted);">No other BBMD routers found.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BMS Server Configuration -->
+                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer; margin: 0.25rem 0 0 0;">
+                  <input type="checkbox" :checked="sub.bmsPlaced" @change="toggleBmsPlaced(sub)">
+                  Host BMS Server here
+                </label>
+
+                <div v-if="sub.bmsPlaced" style="margin-left: 1.25rem; margin-top: 0.2rem;">
+                  <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">BMS IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, 20) || 'Invalid' }}</strong> (.20)</span>
+
+                  <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.15rem;">BMS Network Role:</label>
+                  <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem;">
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                      <input type="radio" :name="'bms-role-' + sub.id" v-model="sub.bmsRole" value="bbmd" :disabled="!sub.bbmdEnabled">
+                      Participate as local BBMD
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                      <input type="radio" :name="'bms-role-' + sub.id" v-model="sub.bmsRole" value="fdr" :disabled="otherBbmdSubnets(sub).length === 0">
+                      Register as FDR client to BBMD:
+                    </label>
+                    <select v-if="sub.bmsRole === 'fdr'" v-model="sub.fdrTargetSubnetId" style="margin-left: 1.25rem; padding: 0.15rem 0.3rem; font-size: 0.7rem; background: #000; color: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-width: 180px;">
+                      <option v-for="t in otherBbmdSubnets(sub)" :key="t.id" :value="t.id">{{ t.name }}</option>
+                    </select>
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                      <input type="radio" :name="'bms-role-' + sub.id" v-model="sub.bmsRole" value="none">
+                      Local segment host only
+                    </label>
+                  </div>
+                  <div v-if="otherBbmdSubnets(sub).length === 0" style="font-size: 0.72rem; color: var(--text-muted);">No other BBMD routers found.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="subnets.length === 0" style="text-align: center; color: var(--text-muted); padding: 2rem; background: rgba(255,255,255,0.02); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
+            No subnets added. Click "Add Subnet" to start designing.
+          </div>
+        </div>
+      </div>
+
+      <!-- Right side: BDT Schedule & Network Preview -->
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+
+        <!-- Global BMS & BDT Preview -->
+        <div class="glass-card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+          <h3 class="card-title" style="font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; color: var(--primary); margin: 0;">
+            Network Preview & Validation
+          </h3>
+
+          <!-- Validation Alerts Pane -->
+          <div id="planner-validation-alerts" style="display: flex; flex-direction: column; gap: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 0.25rem;">
+            <h4 style="font-size: 0.75rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 0 0 0.4rem 0;">Design Validation</h4>
+            <div v-for="(alert, idx) in validationAlerts" :key="idx" class="planner-alert" :class="alert.type" style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1;">
+                <svg v-if="alert.type === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <span style="font-size: 0.82rem;">{{ alert.text }}</span>
+              </div>
+              <AppButton v-if="alert.action" variant="secondary" style="padding: 0.25rem 0.5rem; font-size: 0.72rem; min-width: auto; flex: none; height: auto;" @click="alert.action">
+                {{ alert.actionText }}
+              </AppButton>
+            </div>
+            <div v-if="validationAlerts.length === 0" style="font-size: 0.85rem; color: var(--success); display: flex; align-items: center; gap: 0.5rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              All subnet address designs validate successfully!
+            </div>
+          </div>
+
+          <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.85rem;">
+            <h4 style="font-size: 0.75rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 0 0 0.4rem 0;">BMS Server Placement</h4>
+            <div id="planner-preview-bms-status" style="font-size: 0.85rem; color: #fff; line-height: 1.4;">
+              {{ bmsStatus }}
+            </div>
+          </div>
+
+          <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.85rem;">
+            <h4 style="font-size: 0.75rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 0 0 0.4rem 0;">Broadcast Distribution Table (BDT) Schedule</h4>
+            <div id="planner-preview-bdt" style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; font-family: var(--font-mono);">
+              <div v-if="bdtScheduleData.length === 0">
+                No BBMDs configured.
+              </div>
+              <div v-else v-for="(entry, idx) in bdtScheduleData" :key="idx" style="margin-bottom: 0.75rem;">
+                <strong>BBMD on "{{ entry.subnetName }}" (IP: {{ entry.selfIp }}, Port: {{ entry.port }}):</strong>
+                <div v-if="entry.targets.length === 0" style="padding-left: 1.25rem;">
+                  &bull; No other BBMD entries (isolated subnet)
+                </div>
+                <div v-else v-for="(target, tIdx) in entry.targets" :key="tIdx" style="padding-left: 1.25rem;">
+                  &bull; {{ target.ip }} ({{ target.name }})
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AppButton variant="secondary" style="font-size: 0.95rem; padding: 0.7rem 1.25rem; font-weight: bold; margin-top: 0.25rem; width: 100%; display: flex; justify-content: center;" @click="exportXlsx">
+            <template #icon>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; margin-right: 0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </template>
+            Export Planning Spreadsheet (.xlsx)
+          </AppButton>
+        </div>
+
+        <!-- Live Spreadsheet Preview -->
+        <div class="glass-card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <h3 class="card-title" style="font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; color: var(--secondary); margin: 0;">
+            Live Spreadsheet Structure
+          </h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">
+            Below is a live preview of the Excel sheets and layout:
+          </p>
+          <div id="planner-preview-sheets-structure" style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.8rem; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); padding: 0.75rem; border-radius: var(--radius-sm);">
+            <div><strong>1. "Network Summary"</strong> (Master schedule, BDT overview)</div>
+            <div v-for="(sheet, idx) in sheetStructureData" :key="idx">
+              <strong>{{ sheet.index }}. "{{ sheet.name }}"</strong> (VLAN {{ sheet.vlan }} | Port {{ sheet.port }} | pre-populating {{ sheet.limit }} planned IPs)
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Setup Wizard Modal -->
+    <div v-if="showWizard" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1.5rem;">
+      <div class="glass-card" style="width: 100%; max-width: 500px; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; border: 1px solid var(--border-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <h3 style="font-family: var(--font-heading); font-size: 1.2rem; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; color: var(--primary);"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+            Quick Setup Wizard
+          </h3>
+          <button @click="showWizard = false" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0.2rem;" title="Close Modal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
+        <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+          Specify a base IP address and the number of subnets needed. The wizard will automatically compute a contiguous, non-overlapping subnet plan.
+        </p>
+
+        <!-- Form fields -->
+        <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+          <div class="form-group" style="margin: 0;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Starting IP Address</label>
+            <input type="text" v-model="wizardStartIp" style="width: 100%; padding: 0.45rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;" placeholder="e.g. 192.168.1.0">
+          </div>
+
+          <div style="display: flex; gap: 0.75rem;">
+            <div class="form-group" style="margin: 0; flex: 1;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Number of Subnets</label>
+              <input type="number" v-model.number="wizardSubnetCount" min="1" max="24" style="width: 100%; padding: 0.45rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;">
+            </div>
+
+            <div class="form-group" style="margin: 0; flex: 1.2;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Subnet Size / Mask</label>
+              <select v-model.number="wizardSubnetCidr" style="width: 100%; padding: 0.45rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;">
+                <option v-for="c in cidrOptions" :key="c" :value="c">/{{ c }} ({{ Math.max(0, Math.pow(2, 32 - c) - 2) }} hosts)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem;">
+            <div class="form-group" style="margin: 0; flex: 1;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Devices Per Subnet</label>
+              <input type="number" v-model.number="wizardDevicesPerSubnet" min="0" style="width: 100%; padding: 0.45rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;">
+            </div>
+
+            <div class="form-group" style="margin: 0; flex: 1;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Naming Prefix</label>
+              <input type="text" v-model="wizardNamingPrefix" style="width: 100%; padding: 0.45rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.85rem;" placeholder="e.g. Subnet">
+            </div>
+          </div>
+        </div>
+
+        <div v-if="wizardError" style="font-size: 0.78rem; color: var(--error); background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); padding: 0.5rem; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 0.4rem;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          {{ wizardError }}
+        </div>
+
+        <!-- Buttons -->
+        <div style="display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.5rem; border-top: 1px solid var(--border-color); padding-top: 0.85rem;">
+          <AppButton variant="default" style="padding: 0.45rem 1rem; min-width: auto; flex: none;" @click="showWizard = false">
+            Cancel
+          </AppButton>
+          <AppButton variant="primary" style="padding: 0.45rem 1rem; min-width: auto; flex: none;" @click="generateWizardPlan">
+            Generate Plan
+          </AppButton>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue';
+import { PlannerSubnet } from '../lib/planner';
+import { getSubnetDetails, getOffsetIp, ipToLong, longToIp } from '../lib/subnet';
+import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap } from '../lib/planner';
+import { exportPlannerXlsx } from '../lib/export-xlsx';
+import AppButton from './AppButton.vue';
+
+const splitHorizon = ref(false);
+
+const DEFAULT_SUBNETS: PlannerSubnet[] = [
+  {
+    id: 'sub-1',
+    name: 'Core BMS Subnet',
+    ip: '192.168.1.0',
+    cidr: 24,
+    gatewayOffset: 1,
+    vlan: 10,
+    port: 47808,
+    bbmdEnabled: true,
+    bbmdOffset: 10,
+    bmsPlaced: true,
+    bmsRole: 'bbmd',
+    fdrTargetSubnetId: '',
+    plannedDevices: 0,
+    routeTargets: []
+  },
+  {
+    id: 'sub-2',
+    name: 'Chiller & Boiler Plant',
+    ip: '192.168.2.0',
+    cidr: 24,
+    gatewayOffset: 1,
+    vlan: 20,
+    port: 47808,
+    bbmdEnabled: true,
+    bbmdOffset: 10,
+    bmsPlaced: false,
+    bmsRole: 'none',
+    fdrTargetSubnetId: '',
+    plannedDevices: 0,
+    routeTargets: []
+  },
+  {
+    id: 'sub-3',
+    name: 'VAV Floor Controllers',
+    ip: '192.168.4.0',
+    cidr: 23,
+    gatewayOffset: 1,
+    vlan: 30,
+    port: 47808,
+    bbmdEnabled: false,
+    bbmdOffset: 10,
+    bmsPlaced: false,
+    bmsRole: 'none',
+    fdrTargetSubnetId: '',
+    plannedDevices: 0,
+    routeTargets: []
+  }
+];
+
+const subnets = ref<PlannerSubnet[]>(JSON.parse(JSON.stringify(DEFAULT_SUBNETS)));
+
+// Wizard setup properties
+const showWizard = ref(false);
+const wizardStartIp = ref('192.168.1.0');
+const wizardSubnetCount = ref(4);
+const wizardSubnetCidr = ref(24);
+const wizardDevicesPerSubnet = ref(0);
+const wizardNamingPrefix = ref('Building Subnet');
+const wizardError = ref('');
+
+// Load from localStorage if available
+onMounted(() => {
+  const savedSubnets = localStorage.getItem('bacnet_planner_subnets');
+  const savedSplitHorizon = localStorage.getItem('bacnet_planner_split_horizon');
+
+  if (savedSubnets) {
+    try {
+      subnets.value = JSON.parse(savedSubnets);
+    } catch (e) {
+      console.error("Failed to parse saved subnets", e);
+    }
+  }
+
+  if (savedSplitHorizon) {
+    splitHorizon.value = savedSplitHorizon === 'true';
+  }
+});
+
+// Watch and save to localStorage
+watch(subnets, (newVal) => {
+  localStorage.setItem('bacnet_planner_subnets', JSON.stringify(newVal));
+}, { deep: true });
+
+watch(splitHorizon, (newVal) => {
+  localStorage.setItem('bacnet_planner_split_horizon', newVal.toString());
+});
+
+const cidrOptions = Array.from({ length: 15 }, (_, i) => 16 + i); // /16 to /30
+
+const addSubnet = () => {
+  const newId = `sub-${Date.now()}`;
+  let maxThirdOctet = 0;
+  subnets.value.forEach(s => {
+    const parts = s.ip.split('.').map(Number);
+    if (parts.length === 4 && parts[2] > maxThirdOctet) {
+      maxThirdOctet = parts[2];
+    }
+  });
+  const nextIp = `192.168.${maxThirdOctet + 1}.0`;
+  subnets.value.push({
+    id: newId,
+    name: `New Subnet ${subnets.value.length + 1}`,
+    ip: nextIp,
+    cidr: 24,
+    gatewayOffset: 1,
+    vlan: '',
+    port: 47808,
+    bbmdEnabled: false,
+    bbmdOffset: 10,
+    bmsPlaced: false,
+    bmsRole: 'none',
+    fdrTargetSubnetId: '',
+    plannedDevices: 0,
+    routeTargets: []
+  });
+};
+
+const deleteSubnet = (id: string) => {
+  subnets.value = subnets.value.filter(s => s.id !== id);
+};
+
+const autoSizeSubnet = (sub: PlannerSubnet) => {
+  const targetCidr = calculateAutoSizeCidr(sub.plannedDevices || 0);
+  sub.cidr = targetCidr;
+};
+
+const resetToDefaults = () => {
+  if (confirm("Reset planner to the default example subnets? All current changes will be lost.")) {
+    subnets.value = JSON.parse(JSON.stringify(DEFAULT_SUBNETS));
+    splitHorizon.value = false;
+  }
+};
+
+const clearAllSubnets = () => {
+  if (confirm("Clear all subnets from the planner?")) {
+    subnets.value = [];
+    splitHorizon.value = false;
+  }
+};
+
+const generateWizardPlan = () => {
+  wizardError.value = '';
+  const startLong = ipToLong(wizardStartIp.value);
+  if (startLong === null) {
+    wizardError.value = 'Invalid starting IP address configuration.';
+    return;
+  }
+
+  if (wizardSubnetCount.value < 1 || wizardSubnetCount.value > 100) {
+    wizardError.value = 'Subnet count must be between 1 and 100.';
+    return;
+  }
+
+  const cidr = wizardSubnetCidr.value;
+  const size = Math.pow(2, 32 - cidr);
+  const generated: PlannerSubnet[] = [];
+
+  for (let i = 0; i < wizardSubnetCount.value; i++) {
+    const subnetLong = startLong + i * size;
+    if (subnetLong > 4294967295) {
+      wizardError.value = `IP space exceeded. Generated ${i} subnets before hitting IPv4 limit.`;
+      return;
+    }
+
+    const ip = longToIp(subnetLong);
+    const id = `sub-${Date.now()}-${i}`;
+    const name = `${wizardNamingPrefix.value} ${i + 1}`;
+    const vlan = 10 * (i + 1);
+
+    generated.push({
+      id,
+      name,
+      ip,
+      cidr,
+      gatewayOffset: 1,
+      vlan,
+      port: 47808,
+      bbmdEnabled: i < 3, // Enable BBMD on first 3 subnets by default
+      bbmdOffset: 10,
+      bmsPlaced: i === 0, // Put BMS on first subnet
+      bmsRole: i === 0 ? 'bbmd' : 'none',
+      fdrTargetSubnetId: '',
+      plannedDevices: wizardDevicesPerSubnet.value,
+      routeTargets: []
+    });
+  }
+
+  subnets.value = generated;
+  showWizard.value = false;
+};
+
+// Route target helpers for split horizon
+const otherBbmdSubnets = (sub: PlannerSubnet) => {
+  return subnets.value.filter(s => s.id !== sub.id && s.bbmdEnabled);
+};
+
+const isRouteTarget = (sub: PlannerSubnet, targetId: string) => {
+  if (!sub.routeTargets) {
+    sub.routeTargets = subnets.value.filter(s => s.id !== sub.id && s.bbmdEnabled).map(s => s.id);
+  }
+  return sub.routeTargets.includes(targetId);
+};
+
+const toggleRouteTarget = (sub: PlannerSubnet, targetId: string) => {
+  if (!sub.routeTargets) {
+    sub.routeTargets = subnets.value.filter(s => s.id !== sub.id && s.bbmdEnabled).map(s => s.id);
+  }
+  if (sub.routeTargets.includes(targetId)) {
+    sub.routeTargets = sub.routeTargets.filter(id => id !== targetId);
+  } else {
+    sub.routeTargets.push(targetId);
+  }
+};
+
+// BMS Single placement toggle handler
+const toggleBmsPlaced = (targetSub: PlannerSubnet) => {
+  const newVal = !targetSub.bmsPlaced;
+  subnets.value.forEach(s => {
+    s.bmsPlaced = false;
+  });
+  targetSub.bmsPlaced = newVal;
+};
+
+// Global network validation checks
+interface ValidationAlert {
+  type: 'error' | 'warning';
+  text: string;
+  actionText?: string;
+  action?: () => void;
+}
+
+const validationAlerts = computed<ValidationAlert[]>(() => {
+  const alerts: ValidationAlert[] = [];
+
+  for (let i = 0; i < subnets.value.length; i++) {
+    const s1 = subnets.value[i];
+    const details1 = getSubnetDetails(s1.ip, s1.cidr);
+    if (!details1) continue;
+
+    // Capacity warning (> 500 usable IPs)
+    if (details1.numHosts > 500) {
+      alerts.push({
+        type: 'warning',
+        text: `Subnet "${s1.name}" contains ${details1.numHosts} usable IPs. Consider splitting to manage broadcast storm risks.`
+      });
+    }
+
+    for (let j = i + 1; j < subnets.value.length; j++) {
+      const s2 = subnets.value[j];
+      const details2 = getSubnetDetails(s2.ip, s2.cidr);
+      if (!details2) continue;
+
+      const overlapClassification = classifyOverlap(s1, s2);
+      if (overlapClassification) {
+        alerts.push({
+          type: overlapClassification.type,
+          text: overlapClassification.text,
+          actionText: `Shift "${s2.name}"`,
+          action: () => {
+            const nextIp = findNextAvailableSubnetBlock(s2, s2.cidr, subnets.value);
+            if (nextIp) {
+              s2.ip = nextIp;
+            } else {
+              alert("No free block found in candidate search.");
+            }
+          }
+        });
+      }
+    }
+  }
+
+  // Split Horizon asymmetric validation
+  if (splitHorizon.value) {
+    const bbmds = subnets.value.filter(s => s.bbmdEnabled);
+    for (const s1 of bbmds) {
+      // Lazy load default targets
+      if (!s1.routeTargets) {
+        s1.routeTargets = bbmds.filter(s => s.id !== s1.id).map(s => s.id);
+      }
+      const s1Targets = s1.routeTargets || [];
+      for (const s2 of bbmds) {
+        if (s1.id === s2.id) continue;
+        if (!s2.routeTargets) {
+          s2.routeTargets = bbmds.filter(s => s.id !== s2.id).map(s => s.id);
+        }
+        const s2Targets = s2.routeTargets || [];
+
+        const s1ToS2 = s1Targets.includes(s2.id);
+        const s2ToS1 = s2Targets.includes(s1.id);
+
+        if (s1ToS2 !== s2ToS1 && s1.port === s2.port) {
+          alerts.push({
+            type: 'warning',
+            text: `Asymmetric split-horizon routing detected: BDT entry between "${s1.name}" and "${s2.name}" is one-way.`
+          });
+        }
+      }
+    }
+  }
+
+  return alerts;
+});
+
+// BMS Status computed text
+const bmsStatus = computed(() => {
+  const placedList = subnets.value.filter(s => s.bmsPlaced);
+  if (placedList.length === 0) {
+    return 'No BMS server placed in any subnet.';
+  }
+  if (placedList.length > 1) {
+    return `Multiple BMS servers placed (${placedList.map(s => s.name).join(', ')}). Ensure only one master server exists.`;
+  }
+  const bmsSub = placedList[0];
+  const bmsIp = getOffsetIp(bmsSub.ip, bmsSub.cidr, 20);
+
+  if (bmsSub.bmsRole === 'bbmd') {
+    return `BMS Server placed on "${bmsSub.name}" at IP ${bmsIp}. Acting as Local BBMD.`;
+  } else if (bmsSub.bmsRole === 'fdr') {
+    const targetSub = subnets.value.find(s => s.id === bmsSub.fdrTargetSubnetId);
+    return `BMS Server placed on "${bmsSub.name}" at IP ${bmsIp}. Configured as Foreign Device (FDR), registering to BBMD on "${targetSub ? targetSub.name : 'Unknown'}".`;
+  } else {
+    return `BMS Server placed on "${bmsSub.name}" at IP ${bmsIp}. Standard host without BBMD registration (local traffic only).`;
+  }
+});
+
+// BDT Schedule computed structured data
+const bdtScheduleData = computed(() => {
+  const bbmds = subnets.value.filter(s => s.bbmdEnabled);
+  return bbmds.map(sub => {
+    const selfIp = getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset);
+
+    // Default targets setup if missing
+    if (!sub.routeTargets) {
+      sub.routeTargets = bbmds.filter(b => b.id !== sub.id).map(b => b.id);
+    }
+    const allowedTargets = sub.routeTargets || [];
+    const targets = bbmds.filter(b =>
+      b.id !== sub.id &&
+      b.port === (sub.port || 47808) &&
+      (!splitHorizon.value || allowedTargets.includes(b.id))
+    ).map(b => ({
+      ip: getOffsetIp(b.ip, b.cidr, b.bbmdOffset),
+      name: b.name
+    }));
+
+    return {
+      subnetName: sub.name,
+      selfIp,
+      port: sub.port || 47808,
+      targets
+    };
+  });
+});
+
+// Live sheet structure computed data
+const sheetStructureData = computed(() => {
+  return subnets.value.map((sub, idx) => {
+    const details = getSubnetDetails(sub.ip, sub.cidr);
+    const plannedCount = sub.plannedDevices || (details ? details.numHosts : 0);
+    const limit = details ? (details.numHosts <= 1024 ? details.numHosts : Math.max(plannedCount, 100)) : 0;
+    const sanitizedName = sub.name.replace(/[\\\?\*:\/\[\]]/g, "").substring(0, 30);
+    return {
+      index: idx + 2,
+      name: sanitizedName,
+      vlan: sub.vlan || 'None',
+      port: sub.port,
+      limit
+    };
+  });
+});
+
+// Trigger Excel download
+const exportXlsx = () => {
+  exportPlannerXlsx(subnets.value, splitHorizon.value);
+};
+</script>

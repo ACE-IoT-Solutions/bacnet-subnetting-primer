@@ -2,17 +2,24 @@
   "name": "bacnet-network-calculator",
   "version": "1.0.0",
   "description": "An interactive subnet calculator and primer explaining BACnet/IP, BACnet/Ethernet, broadcast address intersections, and BBMD routing.",
+  "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "typescript": "^6.0.3",
     "vite": "^5.0.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "vue-tsc": "^3.3.6"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
+    "vue": "^3.5.39",
     "xlsx-js-style": "^1.2.0"
   }
 }
