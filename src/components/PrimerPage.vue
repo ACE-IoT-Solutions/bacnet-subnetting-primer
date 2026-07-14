@@ -7,8 +7,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
         BACnet Networking: The Fundamentals
       </h2>
-      <p>Unlike typical web applications that communicate using point-to-point HTTP/TCP client-server architectures, <strong>Building Automation and Control networks (BACnet)</strong> heavily rely on <strong>device discovery (Who-Is/I-Am)</strong> through network-wide <strong>broadcast mechanisms</strong>.</p>
-      <p>Because BACnet utilizes broadcasts for establishing bindings, a solid grasp of Layer 2 and Layer 3 subnet boundaries is critical. Misconfigurations in subnetting can easily cause devices to be discoverable but unable to communicate, or completely invisible across network segments.</p>
+      <p>BACnet defines both directed and broadcast communication. Discovery commonly uses <strong>Who-Is/I-Am</strong>: Who-Is may be sent as a local broadcast, a remote/global broadcast through BACnet routing, or a directed message, depending on the intended scope.</p>
+      <p>Broadcast delivery and directed reachability are separate concerns. A device may be discovered through a forwarded broadcast while later directed services fail because the learned BACnet address is not reachable from the client.</p>
+      <aside class="standards-note"><strong>Standards basis</strong><span>Claims in this primer are grounded in ANSI/ASHRAE Standard 135, including Clause 6 BACnet networking and Annex J BACnet/IP. Explanatory scenarios identify implementation and IP-network causes separately.</span><a href="https://data.ashrae.org/BACnet/" target="_blank" rel="noreferrer">ASHRAE 135 resources</a><a href="https://bacnet.org/developer-aids/" target="_blank" rel="noreferrer">BACnet Committee developer aids</a></aside>
     </div>
 
     <!-- Section 1: BACnet/IP vs BACnet/Ethernet -->
@@ -18,19 +19,19 @@
         <div class="primer-card">
           <h4 class="primer-subheading">BACnet/Ethernet (ISO 8802-3)</h4>
           <p>BACnet/Ethernet is a <strong>Layer 2 (Data Link)</strong> protocol. Devices communicate directly using raw Ethernet frames and MAC addresses. It does not use IP addresses.</p>
-          <p><strong>Critical Limit:</strong> Because routers only forward Layer 3 (Network) traffic, BACnet/Ethernet frames <strong>cannot cross routers</strong>. They are strictly confined to the local physical switch segment or VLAN.</p>
+          <p><strong>Boundary:</strong> BACnet/Ethernet frames are not carried by an ordinary IP router. Bridges may extend the same Ethernet broadcast domain, but communication to another BACnet network requires a BACnet router operating at the BACnet network layer.</p>
 
           <h4 class="primer-subheading" style="margin-top: 1.25rem;">BACnet/Ethernet Broadcasts</h4>
           <p>For device discovery (Who-Is/I-Am), BACnet/Ethernet relies on the physical MAC broadcast address <strong><code>FF:FF:FF:FF:FF:FF</code></strong>.</p>
           <ul style="padding-left: 1.25rem; font-size: 0.85rem; line-height: 1.5; color: var(--text-muted); margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
             <li><strong>Local Confinement:</strong> Every device on the local network switch segment or VLAN receives the broadcast, but standard IP routers block L2 broadcasts completely.</li>
-            <li><strong>No BBMD Support:</strong> BBMDs are an IP-specific (Annex J) concept. Because BACnet/Ethernet has no Layer 3 IP header, BBMD tunnels cannot be used to forward these broadcasts across IP routers.</li>
-            <li><strong>Requires BACnet Routers:</strong> Bridging BACnet/Ethernet to other subnets requires a dedicated <em>BACnet Router</em> that parses and routes packets at the BACnet network layer, translating NPDUs to BACnet/IP or MS/TP.</li>
+            <li><strong>No BBMD Support:</strong> BBMDs are an IP-specific (Annex J) concept. BACnet/Ethernet frames do not use B/IP's BVLL broadcast-management messages and are not forwarded by ordinary IP routers.</li>
+            <li><strong>Requires BACnet Routing:</strong> Communication with another BACnet network requires a BACnet router that forwards NPDUs between its attached datalinks, such as BACnet/Ethernet and BACnet/IP or MS/TP.</li>
           </ul>
 
           <h4 class="primer-subheading" style="margin-top: 1.5rem;">BACnet/IP (Annex J)</h4>
-          <p>BACnet/IP wraps BACnet frames inside standard <strong>UDP/IP (Layer 3 & 4)</strong> packets (usually on port <code>47808</code> / <code>0xBAC0</code>).</p>
-          <p><strong>Benefit:</strong> Because it uses IP, BACnet/IP can traverse routers, allowing BACnet traffic to scale across large campus networks, and it can leverage BBMDs to tunnel broadcasts across subnets.</p>
+          <p>BACnet/IP carries BACnet messages using BVLL over <strong>UDP/IP</strong>. The standard default UDP port is <code>47808</code> / <code>0xBAC0</code>, although another port may be configured.</p>
+          <p><strong>Benefit:</strong> Directed BACnet/IP traffic can use ordinary IP routing. Annex J broadcast management allows one BACnet/IP network number to span multiple IP subnets; separate BACnet network numbers instead require BACnet network-layer routing.</p>
         </div>
 
         <div class="primer-card">
@@ -40,7 +41,7 @@
           <div class="interactive-osi-selector" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem;">
             <button class="osi-toggle-btn" :class="{ active: activeOsiTab === 'ip-local-uc' }" @click="activeOsiTab = 'ip-local-uc'">BACnet/IP Local Unicast</button>
             <button class="osi-toggle-btn" :class="{ active: activeOsiTab === 'ip-routed-uc' }" @click="activeOsiTab = 'ip-routed-uc'">BACnet/IP Routed Unicast</button>
-            <button class="osi-toggle-btn" :class="{ active: activeOsiTab === 'ip-bbmd-tunnel' }" @click="activeOsiTab = 'ip-bbmd-tunnel'">BBMD Tunnel Forward</button>
+            <button class="osi-toggle-btn" :class="{ active: activeOsiTab === 'ip-bbmd-tunnel' }" @click="activeOsiTab = 'ip-bbmd-tunnel'">BBMD Distribution</button>
             <button class="osi-toggle-btn" :class="{ active: activeOsiTab === 'eth-uc' }" @click="activeOsiTab = 'eth-uc'">BACnet/Ethernet Unicast</button>
             <button class="osi-toggle-btn" :class="{ active: activeOsiTab === 'eth-bc' }" @click="activeOsiTab = 'eth-bc'" style="grid-column: span 2;">BACnet/Ethernet Broadcast</button>
           </div>
@@ -103,7 +104,7 @@
                 <div class="packet-layer ip" style="border: 1px solid var(--secondary);">
                   <span class="layer-meta">L3</span> IPv4 Header (Src IP: BBMD_1_IP | Dst IP: BBMD_2_IP)
                   <div style="font-size: 0.75rem; margin-top: 0.2rem; opacity: 0.9; color: var(--secondary); line-height: 1.3;">
-                    IP addresses rewritten as a Unicast Tunnel: BBMD 1 sends carrying frame directly to BBMD 2.
+                    The BBMD sends a BVLL Forwarded-NPDU carrying the original NPDU toward the configured peer or distribution address.
                   </div>
                 </div>
                 <div class="packet-layer udp">
@@ -169,8 +170,8 @@
       <div class="primer-grid">
         <div class="primer-card">
           <h4 class="primer-subheading">What is a Subnet Broadcast?</h4>
-          <p>In BACnet/IP networks, a device broadcasts a <strong>"Who-Is"</strong> service request to locate another device by its instance number (e.g. Device ID 10001). This request is sent to the <strong>Subnet Broadcast Address</strong>.</p>
-          <p>Every IP network has a unique network ID and a broadcast address. The broadcast address is calculated by setting all the host bits of the subnet to binary <code>1</code>. Any device on that local segment listening to that broadcast address will process the packet.</p>
+          <p>A BACnet/IP client may send <strong>Who-Is</strong> using the local B/IP broadcast address when it wants discovery on its local IP subnet. Who-Is may also be directed or distributed more broadly through BACnet mechanisms.</p>
+          <p>For IPv4 subnet broadcast, the address has the broadcasting device's subnet prefix with all host bits set to binary <code>1</code>, together with the BACnet UDP port. Delivery still depends on the host IP stack, switch/VLAN membership, and local filtering.</p>
 
           <div class="callout-box" style="margin-top: 1rem;">
             <div class="callout-title" style="display: flex; align-items: center; gap: 0.5rem; font-weight: bold; color: var(--warning);">
@@ -183,7 +184,7 @@
                 <li><strong>Device A Broadcast IP:</strong> 192.168.1.255</li>
                 <li><strong>Device B Broadcast IP:</strong> 192.168.1.255</li>
               </ul>
-              They share the <em>exact same</em> broadcast address and hear each other's broadcasts if plugged into the same switch. However, Device B's network is <code>192.168.1.0/24</code>, so it does not believe Device A (<code>192.168.0.5</code>) is local, and attempts to send replies through a router gateway, breaking direct unicast!
+              Their configured masks produce the same directed-broadcast destination, so both may receive the discovery when they share the same broadcast domain and their IP stacks accept it. Device B nevertheless classifies Device A as off-subnet and sends directed replies toward its default gateway. Communication then depends on a working gateway and return route.
             </div>
           </div>
         </div>
@@ -232,9 +233,9 @@
           <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--radius-md); font-size: 0.85rem; border: 1px solid var(--border-color); margin-top: 1rem;">
             <span style="color: var(--warning); font-weight:600; display: block; margin-bottom: 0.25rem;">Resulting Symptoms:</span>
             <ul class="custom-list" style="margin-bottom: 0; font-size: 0.8rem; padding-left: 1rem;">
-              <li>Who-Is (Broadcast) requests reach both devices correctly.</li>
+              <li>The illustrated Who-Is broadcast can reach both devices on the shared Layer 2 domain.</li>
               <li>Device A replies/requests unicast directly to Device B (using Layer 2 MAC translation).</li>
-              <li>Device B rejects A as local, forwarding packets to its Gateway router. If routing fails or lacks a return route, <strong>Device B cannot reply to A</strong>.</li>
+              <li>Device B treats A as off-subnet and uses its gateway. The reply fails when the gateway is absent or wrong, no route exists in either direction, an ACL blocks the BACnet UDP port, or the host rejects the traffic because of its local IP configuration.</li>
             </ul>
           </div>
         </div>
@@ -315,14 +316,14 @@
       <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
         <div class="primer-card">
           <h4 class="primer-subheading">How BBMDs Work (Annex J)</h4>
-          <p>Because standard IP routers block UDP broadcast packets (like BACnet Who-Is), device discovery across different subnets is impossible without helper infrastructure.</p>
-          <p><strong>The BBMD Solution:</strong> You place one BBMD-enabled device (often a BACnet Router or BMS server) on each subnet. These BBMDs maintain a shared list of each other's IP addresses called a <strong>Broadcast Distribution Table (BDT)</strong>.</p>
+          <p>Ordinary IP routers do not forward IPv4 limited or subnet-directed broadcasts by default. A local BACnet/IP broadcast therefore does not reach another IP subnet merely because directed IP routing exists.</p>
+          <p><strong>Annex J broadcast management:</strong> A BBMD distributes B/IP broadcasts to peers listed in its <strong>Broadcast Distribution Table (BDT)</strong> and to registered foreign devices. A common design places a BBMD on each participating IP subnet, but the required topology and BDT contents are design choices—not an automatic symmetric mesh.</p>
 
           <h4 class="primer-subheading" style="margin-top: 1.25rem;">The Relay Workflow</h4>
           <ol style="padding-left: 1.25rem; font-size: 0.85rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem;">
-            <li><strong>Intercept:</strong> Device A broadcasts a Who-Is on Subnet 1. BBMD 1 intercepts it.</li>
-            <li><strong>Tunnel:</strong> BBMD 1 wraps the broadcast inside a unicast <strong>BVLL (BACnet Virtual Link Layer)</strong> packet and tunnels it directly across the IP router to BBMD 2 on Subnet 2.</li>
-            <li><strong>Re-Broadcast:</strong> BBMD 2 extracts the original Who-Is frame and broadcasts it locally on Subnet 2.</li>
+            <li><strong>Receive:</strong> BBMD 1 receives the Original-Broadcast-NPDU sent on its local B/IP subnet.</li>
+            <li><strong>Distribute:</strong> It sends a Forwarded-NPDU using the BDT entry's address and mask. Depending on that entry, delivery can use directed broadcast or the Annex J two-hop unicast method.</li>
+            <li><strong>Deliver locally:</strong> The receiving BBMD distributes the forwarded NPDU on its local B/IP subnet and avoids re-forwarding it indefinitely.</li>
             <li><strong>Reply:</strong> Device B receives the Who-Is and returns an <strong>I-Am</strong>. The origin can learn about the device through the forwarded discovery exchange, but that does not by itself prove the advertised source address is reachable for later unicast services.</li>
           </ol>
         </div>
@@ -330,7 +331,7 @@
         <!-- Interactive BBMD Simulation Diagram -->
         <div class="primer-card flex-col align-center" style="width: 100%;">
           <h4 class="primer-subheading" style="font-size: 0.95rem; margin-bottom: 0.5rem; text-align: center;">Interactive BBMD Broadcast Simulator</h4>
-          <p style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--text-secondary); text-align: center;">Click the buttons below to see how broadcasts cross subnets when BBMDs tunnel traffic, compared to when they are disabled.</p>
+          <p style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--text-secondary); text-align: center;">Compare local broadcast behavior with and without Annex J BBMD distribution between the IP subnets.</p>
 
           <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; width: 100%;">
             <svg ref="bbmdSvgRef" id="bbmd-svg" class="diagram-canvas" viewBox="0 0 700 280" width="100%">
@@ -343,21 +344,20 @@
               <text x="565" y="52" font-family="Inter" font-size="12" font-weight="600" fill="var(--secondary)" text-anchor="middle">Subnet 2 (192.168.2.0/24)</text>
 
               <!-- Router in center -->
-              <g class="node-group" id="node-router">
-                <circle cx="350" cy="140" r="28" :stroke="routerStroke" stroke-width="2" fill="#1e293b" style="transition: stroke 0.3s;"></circle>
-                <text x="350" y="144" font-family="Inter" font-size="11" fill="#fff" text-anchor="middle">Router</text>
-              </g>
+              <AceSvgNetworkNode :x="350" :y="140" label="Router" :stroke="routerStroke" />
 
               <!-- Network Switch 1 -->
               <g class="node-group" id="node-sw1">
                 <rect x="175" y="120" width="60" height="36" rx="6" fill="#1e293b" stroke="#475569" stroke-width="2"></rect>
-                <text x="205" y="142" font-family="Inter" font-size="10" fill="#cbd5e1" text-anchor="middle">Switch 1</text>
+                <use href="#ace-sim-network" class="sim-node-icon" x="195" y="123" width="20" height="20" />
+                <text x="205" y="152" class="sim-node-caption">Switch 1</text>
               </g>
 
               <!-- Network Switch 2 -->
               <g class="node-group" id="node-sw2">
                 <rect x="465" y="120" width="60" height="36" rx="6" fill="#1e293b" stroke="#475569" stroke-width="2"></rect>
-                <text x="495" y="142" font-family="Inter" font-size="10" fill="#cbd5e1" text-anchor="middle">Switch 2</text>
+                <use href="#ace-sim-network" class="sim-node-icon secondary" x="485" y="123" width="20" height="20" />
+                <text x="495" y="152" class="sim-node-caption">Switch 2</text>
               </g>
 
               <!-- Connections -->
@@ -367,41 +367,46 @@
               <!-- Subnet 1 Devices -->
               <g class="node-group" id="node-bbmd-devA">
                 <rect x="35" y="70" width="105" height="46" rx="6" fill="#151c2e" stroke="#334155" stroke-width="1.5"></rect>
-                <text x="87.5" y="90" class="node-label" font-size="11">Device A</text>
-                <text x="87.5" y="104" class="node-ip" font-size="9">192.168.1.100</text>
+                <use href="#ace-sim-device" class="sim-node-icon" x="43" y="80" width="20" height="20" />
+                <text x="96" y="90" class="node-label" font-size="11">Device A</text>
+                <text x="96" y="104" class="node-ip">192.168.1.100</text>
               </g>
               <line x1="140" y1="93" x2="175" y2="130" class="wire-path" stroke="rgba(255,255,255,0.1)" stroke-width="2"></line>
 
               <!-- BBMD 1 -->
               <g class="node-group" id="node-bbmd-1">
                 <rect x="35" y="160" width="105" height="46" rx="6" fill="#151c2e" stroke="var(--primary)" stroke-width="1.5"></rect>
-                <text x="87.5" y="180" class="node-label" fill="var(--primary)" font-size="11">BBMD 1</text>
-                <text x="87.5" y="194" class="node-ip" font-size="9">192.168.1.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon" x="43" y="170" width="20" height="20" />
+                <text x="96" y="180" class="node-label" fill="var(--primary)" font-size="11">BBMD 1</text>
+                <text x="96" y="194" class="node-ip">192.168.1.10</text>
               </g>
               <line x1="140" y1="183" x2="175" y2="146" class="wire-path" stroke="rgba(255,255,255,0.1)" stroke-width="2"></line>
 
               <!-- Subnet 2 Devices -->
               <g class="node-group" id="node-bbmd-devB">
                 <rect x="560" y="70" width="105" height="46" rx="6" fill="#151c2e" stroke="#334155" stroke-width="1.5"></rect>
-                <text x="612.5" y="90" class="node-label" font-size="11">Device B</text>
-                <text x="612.5" y="104" class="node-ip" font-size="9">192.168.2.100</text>
+                <use href="#ace-sim-device" class="sim-node-icon secondary" x="568" y="80" width="20" height="20" />
+                <text x="621" y="90" class="node-label" font-size="11">Device B</text>
+                <text x="621" y="104" class="node-ip">192.168.2.100</text>
               </g>
               <line x1="560" y1="93" x2="525" y2="130" class="wire-path" stroke="rgba(255,255,255,0.1)" stroke-width="2"></line>
 
               <!-- BBMD 2 -->
               <g class="node-group" id="node-bbmd-2">
                 <rect x="560" y="160" width="105" height="46" rx="6" fill="#151c2e" stroke="var(--secondary)" stroke-width="1.5"></rect>
-                <text x="612.5" y="180" class="node-label" fill="var(--secondary)" font-size="11">BBMD 2</text>
-                <text x="612.5" y="194" class="node-ip" font-size="9">192.168.2.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon secondary" x="568" y="170" width="20" height="20" />
+                <text x="621" y="180" class="node-label" fill="var(--secondary)" font-size="11">BBMD 2</text>
+                <text x="621" y="194" class="node-ip">192.168.2.10</text>
               </g>
               <line x1="560" y1="183" x2="525" y2="146" class="wire-path" stroke="rgba(255,255,255,0.1)" stroke-width="2"></line>
             </svg>
           </div>
 
           <div class="bbmd-controls" style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 0.75rem; width: 100%;">
-            <AppButton variant="primary" :disabled="primerAnimating" @click="runBbmdflow(false)">Simulate Without BBMD (Fails)</AppButton>
-            <AppButton variant="secondary" :disabled="primerAnimating" @click="runBbmdflow(true)">Simulate With BBMD (Succeeds)</AppButton>
+            <AppButton variant="danger" :disabled="primerAnimating" @click="runBbmdflow(false)">No broadcast distribution</AppButton>
+            <AppButton variant="secondary" :disabled="primerAnimating" @click="runBbmdflow(true)">Distribute through BBMDs</AppButton>
           </div>
+          <div class="failure-causes"><strong>Why the first simulation fails</strong><ul><li>The source sends a local B/IP broadcast.</li><li>The ordinary IP router does not forward that broadcast.</li><li>No BBMD, registered foreign device, or BACnet router path distributes it to the remote BACnet network.</li><li>Directed unicast may still work if the destination address is already known and IP routing permits it.</li></ul></div>
         </div>
 
         <div class="primer-card flex-col align-center" style="width: 100%; border-color: rgba(255, 167, 38, 0.35);">
@@ -422,28 +427,34 @@
 
               <g class="node-group">
                 <rect x="40" y="70" width="145" height="46" rx="7" fill="#151c2e" stroke="var(--primary)" stroke-width="1.5"></rect>
-                <text x="112.5" y="90" class="node-label" font-size="11">Who-Is Origin</text>
-                <text x="112.5" y="104" class="node-ip" font-size="9">10.10.10.50</text>
+                <use href="#ace-sim-device" class="sim-node-icon" x="51" y="81" width="20" height="20" />
+                <text x="124" y="90" class="node-label">Who-Is Origin</text>
+                <text x="124" y="104" class="node-ip">10.10.10.50</text>
               </g>
               <g class="node-group">
                 <rect x="40" y="180" width="145" height="46" rx="7" fill="#151c2e" stroke="var(--primary)" stroke-width="1.5"></rect>
-                <text x="112.5" y="200" class="node-label" font-size="11">BMS BBMD</text>
-                <text x="112.5" y="214" class="node-ip" font-size="9">10.10.10.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon" x="51" y="191" width="20" height="20" />
+                <text x="124" y="200" class="node-label">BMS BBMD</text>
+                <text x="124" y="214" class="node-ip">10.10.10.10</text>
               </g>
-              <g class="node-group">
-                <circle cx="380" cy="140" r="28" :stroke="unroutablePhase === 'failed' ? 'var(--error)' : '#475569'" stroke-width="2" fill="#1e293b"></circle>
-                <text x="380" y="137" font-family="Inter" font-size="10" fill="#fff" text-anchor="middle">IP Router</text>
-                <text x="380" y="150" font-family="Inter" font-size="8" :fill="unroutablePhase === 'failed' ? 'var(--error)' : '#94a3b8'" text-anchor="middle">NO ROUTE</text>
-              </g>
+              <AceSvgNetworkNode
+                :x="380"
+                :y="140"
+                label="IP Router · NO ROUTE"
+                :stroke="unroutablePhase === 'failed' ? 'var(--error)' : '#59657b'"
+                :label-color="unroutablePhase === 'failed' ? 'var(--error)' : 'var(--text-secondary)'"
+              />
               <g class="node-group">
                 <rect x="575" y="180" width="145" height="46" rx="7" fill="#151c2e" stroke="var(--secondary)" stroke-width="1.5"></rect>
-                <text x="647.5" y="200" class="node-label" font-size="11">OT BBMD</text>
-                <text x="647.5" y="214" class="node-ip" font-size="9">172.20.40.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon secondary" x="586" y="191" width="20" height="20" />
+                <text x="659" y="200" class="node-label">OT BBMD</text>
+                <text x="659" y="214" class="node-ip">172.20.40.10</text>
               </g>
               <g class="node-group">
                 <rect x="575" y="70" width="145" height="46" rx="7" fill="#151c2e" :stroke="unroutablePhase === 'idle' ? '#475569' : 'var(--success)'" stroke-width="1.5"></rect>
-                <text x="647.5" y="90" class="node-label" font-size="11">Device 2001</text>
-                <text x="647.5" y="104" class="node-ip" font-size="9">172.20.40.25</text>
+                <use href="#ace-sim-device" class="sim-node-icon secondary" x="586" y="81" width="20" height="20" />
+                <text x="659" y="90" class="node-label">Device 2001</text>
+                <text x="659" y="104" class="node-ip">172.20.40.25</text>
               </g>
             </svg>
           </div>
@@ -458,6 +469,7 @@
           </div>
 
           <AppButton variant="secondary" :disabled="primerAnimating" @click="runUnroutableIamFlow">Run Discovery → ReadProperty</AppButton>
+          <div class="failure-causes"><strong>Plausible causes in this scenario</strong><ul><li>The I-Am advertises a private or otherwise unrouted B/IP address.</li><li>The client lacks a route, or the remote network lacks a return route.</li><li>A firewall or ACL permits BBMD traffic but blocks directed BACnet UDP traffic.</li><li>NAT changes transport addresses without a BACnet-aware design.</li><li>The device has an incorrect mask, gateway, or B/IP port.</li></ul></div>
           <div class="verdict-box verdict-warning" style="width: 100%; margin-top: 1rem;">
             <div class="verdict-header"><span>Key troubleshooting lesson</span></div>
             <div class="verdict-body"><strong>Discovered does not mean reachable.</strong> BBMDs distribute BACnet broadcasts; they do not automatically route, proxy, or NAT subsequent unicast requests. Verify the client has a route and permitted UDP path to the exact IP address learned from the I-Am.</div>
@@ -473,8 +485,8 @@
         <div class="primer-card">
           <h4 class="primer-subheading">What is Split Horizon BBMD?</h4>
           <p>In multi-tenant buildings, network architects often need to route discovery traffic selectively. For example, a central BMS server must discover all devices, but individual tenant networks should not see or interfere with each other's subnets.</p>
-          <p>In standard configurations, BBMD routing is <strong>symmetric</strong> (fully connected): every BBMD has every other BBMD registered in its Broadcast Distribution Table (BDT). This means broadcasts from one tenant are tunneled to all other tenants, exposing their networks.</p>
-          <p><strong>Split Horizon</strong> configures BBMDs <strong>asymmetrically</strong>. BBMD tables are configured so that tenant subnets route traffic to the central BMS BBMD, but Tenant B and Tenant C BBMDs are excluded from each other's tables.</p>
+          <p>A fully connected, symmetric BDT is a common design convention, not a default imposed by Standard 135. Each BBMD distributes according to its own configured BDT entries.</p>
+          <p><strong>“Split horizon”</strong> is used here as a design label for deliberately selective or asymmetric BDTs; it is not a named Annex J topology. Such a design can reduce broadcast distribution, but it must be tested for missing discovery paths, duplicate forwarding, and unintended one-way behavior.</p>
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-top: 1rem; margin-bottom: 1rem;">
             <div style="background: rgba(0,0,0,0.2); padding: 0.6rem; border-radius: var(--radius-sm); border-left: 3px solid var(--primary);">
@@ -501,7 +513,7 @@
           </div>
 
           <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.45; margin: 0;">
-            Tenant 1 (B) broadcasts are tunneled only to the central BMS (A). They are never relayed to Tenant 2 (C), maintaining subnet boundary security while allowing building engineers central visibility.
+            In this configured example, Tenant 1 broadcasts are distributed only to the central BMS entry. This limits discovery traffic but is <strong>not a security boundary</strong>: directed BACnet or other IP traffic still depends on routing, ACLs, and device authorization.
           </p>
         </div>
 
@@ -528,22 +540,25 @@
               <!-- Node BMS Subnet (A) -->
               <g class="node-group" transform="translate(350, 50)">
                 <circle r="28" fill="#1e293b" stroke="#cbd5e1" stroke-width="2.5"></circle>
-                <text y="4" font-family="Inter" font-size="11" fill="#fff" font-weight="600" text-anchor="middle">BMS A</text>
-                <text y="42" font-family="Inter" font-size="10.5" fill="var(--text-secondary)" text-anchor="middle">192.168.1.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon secondary" x="-13" y="-13" width="26" height="26" />
+                <text y="45" class="split-node-name">BMS BBMD A</text>
+                <text y="59" class="split-node-address">192.168.1.10</text>
               </g>
 
               <!-- Node Tenant 1 Subnet (B) -->
               <g class="node-group" transform="translate(180, 170)">
                 <circle r="28" fill="#1e293b" stroke="var(--primary)" stroke-width="2.5"></circle>
-                <text y="4" font-family="Inter" font-size="11" fill="#fff" font-weight="600" text-anchor="middle">Tenant 1 B</text>
-                <text y="42" font-family="Inter" font-size="10.5" fill="var(--text-secondary)" text-anchor="middle">192.168.2.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon" x="-13" y="-13" width="26" height="26" />
+                <text y="45" class="split-node-name">Tenant 1 BBMD B</text>
+                <text y="59" class="split-node-address">192.168.2.10</text>
               </g>
 
               <!-- Node Tenant 2 Subnet (C) -->
               <g class="node-group" transform="translate(520, 170)">
                 <circle r="28" fill="#1e293b" stroke="var(--secondary)" stroke-width="2.5"></circle>
-                <text y="4" font-family="Inter" font-size="11" fill="#fff" font-weight="600" text-anchor="middle">Tenant 2 C</text>
-                <text y="42" font-family="Inter" font-size="10.5" fill="var(--text-secondary)" text-anchor="middle">192.168.3.10</text>
+                <use href="#ace-sim-bbmd" class="sim-node-icon secondary" x="-13" y="-13" width="26" height="26" />
+                <text y="45" class="split-node-name">Tenant 2 BBMD C</text>
+                <text y="59" class="split-node-address">192.168.3.10</text>
               </g>
 
               <!-- Link Label -->
@@ -583,12 +598,12 @@
         <!-- Explanation card -->
         <div class="primer-card">
           <h4 class="primer-subheading">VLAN Isolation Rules</h4>
-          <p>Building automation switches leverage <strong>VLAN tagging (802.1Q)</strong> to isolate subnet traffic at the physical port level. Devices plugged into ports configured with the same VLAN ID can communicate directly. However, communication between different VLANs must pass through a router gateway, forcing all traffic to conform to network firewall policies.</p>
+          <p>IEEE 802.1Q VLANs create separate Layer 2 broadcast domains. Endpoints in the same VLAN can communicate at Layer 2 when switch policy permits it. Communication between VLANs requires a Layer 3 function, but filtering occurs only when ACL or firewall policy is actually configured.</p>
           <div style="background: rgba(255,255,255,0.02); border-left: 3px solid var(--secondary); padding: 0.85rem; border-radius: var(--radius-sm); margin-top: 1rem; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.55;">
             <strong>VLAN Access vs. Trunk Ports:</strong>
             <ul style="margin: 0.35rem 0 0 1.25rem; padding: 0;">
-              <li><strong>Access Ports:</strong> Un-encapsulated device connections. The network switch tags packets upon ingress and strips tags upon egress. Devices (like controllers or BMS servers) are unaware of the VLAN tags.</li>
-              <li><strong>Trunk Ports:</strong> Carry traffic for multiple VLANs over a single physical link. Packets retain their 802.1Q tags, allowing multi-tenant BACnet ports to share physical ethernet backbones securely.</li>
+              <li><strong>Access Ports:</strong> Typically carry untagged endpoint traffic assigned by the switch to one VLAN. Controllers and BMS servers ordinarily do not see the 802.1Q tag.</li>
+              <li><strong>Trunk Ports:</strong> Carry multiple VLANs over one link using tags, subject to the allowed-VLAN list and native-VLAN configuration. Tagging provides separation, not authentication or encryption.</li>
             </ul>
           </div>
         </div>
@@ -601,12 +616,7 @@
           <!-- Mode / Toggle and Buttons Toolbar -->
           <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%; margin-bottom: 1rem; align-items: center;">
             <!-- Router Routing Mode toggle -->
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 0.85rem; color: var(--text-secondary);">Inter-VLAN Routing Gateway:</span>
-              <AppButton :variant="routerEnabled ? 'primary' : 'default'" @click="routerEnabled = !routerEnabled" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; min-width: auto; height: auto;">
-                {{ routerEnabled ? 'Router Enabled' : 'Router Disabled' }}
-              </AppButton>
-            </div>
+            <AceToggle v-model="routerEnabled" label="Inter-VLAN routing gateway" :description="routerEnabled ? 'Layer 3 path enabled' : 'No Layer 3 path between VLANs'" />
 
             <!-- Action buttons -->
             <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; width: 100%;">
@@ -620,6 +630,7 @@
                 Ping cross-VLAN (Dev A &rarr; Dev D)
               </AppButton>
             </div>
+            <div class="failure-causes"><strong>Why cross-VLAN unicast can fail</strong><ul><li>The endpoint has a missing or incorrect default gateway.</li><li>The router interface or switched virtual interface is down.</li><li>No return route exists.</li><li>An ACL or firewall blocks ICMP or the BACnet UDP port.</li><li>An access/trunk port has the wrong VLAN, native VLAN, or allowed-VLAN configuration.</li></ul></div>
           </div>
 
           <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; width: 100%;">
@@ -661,9 +672,7 @@
               <!-- Router Node -->
               <g class="node-group" transform="translate(350, 60)">
                 <circle r="26" fill="#1e293b" :stroke="routerEnabled ? 'var(--primary)' : 'rgba(255,255,255,0.15)'" stroke-width="2.5" style="transition: all 0.3s;"></circle>
-                <!-- Router Symbol (crossed arrows) -->
-                <path d="M-8,-8 L8,8 M8,-8 L-8,8" :stroke="routerEnabled ? 'var(--primary)' : 'rgba(255,255,255,0.4)'" stroke-width="2"></path>
-                <circle r="4" fill="#1e293b" :stroke="routerEnabled ? 'var(--primary)' : 'rgba(255,255,255,0.4)'" stroke-width="2"></circle>
+                <use href="#ace-sim-router" :class="['sim-node-icon', { secondary: !routerEnabled }]" x="-13" y="-13" width="26" height="26" />
 
                 <text y="-32" font-family="Inter" font-size="10.5" fill="#fff" font-weight="bold" text-anchor="middle">IP Router</text>
                 <text y="-44" font-family="Inter" font-size="8" fill="var(--text-muted)" text-anchor="middle">
@@ -678,22 +687,22 @@
               <!-- Switch 1 Node -->
               <g class="node-group" transform="translate(240, 180)">
                 <rect x="-45" y="-25" width="90" height="50" rx="6" fill="#1e293b" stroke="#94a3b8" stroke-width="2"></rect>
-                <text y="-2" font-family="Inter" font-size="10.5" fill="#fff" font-weight="bold" text-anchor="middle">Switch 1</text>
-                <text y="12" font-family="Inter" font-size="8.5" fill="var(--text-secondary)" text-anchor="middle">Core SW</text>
+                <use href="#ace-sim-network" class="sim-node-icon" x="-11" y="-19" width="22" height="22" />
+                <text y="17" class="sim-node-caption">Switch 1 · Core</text>
               </g>
 
               <!-- Switch 2 Node -->
               <g class="node-group" transform="translate(460, 180)">
                 <rect x="-45" y="-25" width="90" height="50" rx="6" fill="#1e293b" stroke="#94a3b8" stroke-width="2"></rect>
-                <text y="-2" font-family="Inter" font-size="10.5" fill="#fff" font-weight="bold" text-anchor="middle">Switch 2</text>
-                <text y="12" font-family="Inter" font-size="8.5" fill="var(--text-secondary)" text-anchor="middle">Core SW</text>
+                <use href="#ace-sim-network" class="sim-node-icon secondary" x="-11" y="-19" width="22" height="22" />
+                <text y="17" class="sim-node-caption">Switch 2 · Core</text>
               </g>
 
               <!-- Device Nodes (Left) -->
               <!-- Device A -->
               <g class="node-group" transform="translate(90, 110)">
                 <circle r="18" fill="#1e293b" stroke="#f97316" stroke-width="2"></circle>
-                <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="bold" text-anchor="middle">A</text>
+                <use href="#ace-sim-device" class="sim-node-icon" x="-10" y="-10" width="20" height="20" />
                 <text x="-24" y="-2" font-family="Inter" font-size="8.5" fill="#fff" text-anchor="end">Dev A</text>
                 <text x="-24" y="8" font-family="Inter" font-size="7.5" fill="var(--text-muted)" text-anchor="end">192.168.10.11</text>
                 <text y="26" font-family="Inter" font-size="7.5" fill="#f97316" text-anchor="middle" font-weight="bold">Access V10</text>
@@ -701,7 +710,7 @@
               <!-- Device B -->
               <g class="node-group" transform="translate(90, 180)">
                 <circle r="18" fill="#1e293b" stroke="#3b82f6" stroke-width="2"></circle>
-                <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="bold" text-anchor="middle">B</text>
+                <use href="#ace-sim-device" class="sim-node-icon secondary" x="-10" y="-10" width="20" height="20" />
                 <text x="-24" y="-2" font-family="Inter" font-size="8.5" fill="#fff" text-anchor="end">Dev B</text>
                 <text x="-24" y="8" font-family="Inter" font-size="7.5" fill="var(--text-muted)" text-anchor="end">192.168.20.12</text>
                 <text y="26" font-family="Inter" font-size="7.5" fill="#3b82f6" text-anchor="middle" font-weight="bold">Access V20</text>
@@ -709,7 +718,7 @@
               <!-- Device C -->
               <g class="node-group" transform="translate(90, 250)">
                 <circle r="18" fill="#1e293b" stroke="#f97316" stroke-width="2"></circle>
-                <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="bold" text-anchor="middle">C</text>
+                <use href="#ace-sim-device" class="sim-node-icon" x="-10" y="-10" width="20" height="20" />
                 <text x="-24" y="-2" font-family="Inter" font-size="8.5" fill="#fff" text-anchor="end">Dev C</text>
                 <text x="-24" y="8" font-family="Inter" font-size="7.5" fill="var(--text-muted)" text-anchor="end">192.168.10.13</text>
                 <text y="26" font-family="Inter" font-size="7.5" fill="#f97316" text-anchor="middle" font-weight="bold">Access V10</text>
@@ -719,7 +728,7 @@
               <!-- Device D -->
               <g class="node-group" transform="translate(610, 110)">
                 <circle r="18" fill="#1e293b" stroke="#3b82f6" stroke-width="2"></circle>
-                <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="bold" text-anchor="middle">D</text>
+                <use href="#ace-sim-device" class="sim-node-icon secondary" x="-10" y="-10" width="20" height="20" />
                 <text x="24" y="-2" font-family="Inter" font-size="8.5" fill="#fff" text-anchor="start">Dev D</text>
                 <text x="24" y="8" font-family="Inter" font-size="7.5" fill="var(--text-muted)" text-anchor="start">192.168.20.14</text>
                 <text y="26" font-family="Inter" font-size="7.5" fill="#3b82f6" text-anchor="middle" font-weight="bold">Access V20</text>
@@ -727,7 +736,7 @@
               <!-- Device E -->
               <g class="node-group" transform="translate(610, 180)">
                 <circle r="18" fill="#1e293b" stroke="#f97316" stroke-width="2"></circle>
-                <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="bold" text-anchor="middle">E</text>
+                <use href="#ace-sim-device" class="sim-node-icon" x="-10" y="-10" width="20" height="20" />
                 <text x="24" y="-2" font-family="Inter" font-size="8.5" fill="#fff" text-anchor="start">Dev E</text>
                 <text x="24" y="8" font-family="Inter" font-size="7.5" fill="var(--text-muted)" text-anchor="start">192.168.10.15</text>
                 <text y="26" font-family="Inter" font-size="7.5" fill="#f97316" text-anchor="middle" font-weight="bold">Access V10</text>
@@ -735,7 +744,7 @@
               <!-- Device F -->
               <g class="node-group" transform="translate(610, 250)">
                 <circle r="18" fill="#1e293b" stroke="#3b82f6" stroke-width="2"></circle>
-                <text y="4" font-family="Inter" font-size="10" fill="#fff" font-weight="bold" text-anchor="middle">F</text>
+                <use href="#ace-sim-device" class="sim-node-icon secondary" x="-10" y="-10" width="20" height="20" />
                 <text x="24" y="-2" font-family="Inter" font-size="8.5" fill="#fff" text-anchor="start">Dev F</text>
                 <text x="24" y="8" font-family="Inter" font-size="7.5" fill="var(--text-muted)" text-anchor="start">192.168.20.16</text>
                 <text y="26" font-family="Inter" font-size="7.5" fill="#3b82f6" text-anchor="middle" font-weight="bold">Access V20</text>
@@ -753,6 +762,8 @@
 import { ref, computed, watch, inject } from 'vue';
 import TerminalLog from './TerminalLog.vue';
 import AppButton from './AppButton.vue';
+import AceToggle from './AceToggle.vue';
+import AceSvgNetworkNode from './AceSvgNetworkNode.vue';
 import { ipToLong, longToIp, getSubnetDetails, cidrToMask, toBinaryString } from '../lib/subnet';
 
 const activeOsiTab = ref('ip-local-uc');
@@ -930,25 +941,25 @@ const runBbmdflow = async (bbmdEnabled: boolean) => {
       ]);
 
       logToConsole(`[Router] UDP Broadcast blocked from crossing subnet boundary. Packet dropped.`, 'error');
-      logToConsole(`[BBMD 1] Intercepted local broadcast. Wrapping into BVLL unicast tunnel to BBMD 2 (192.168.2.10)...`, 'success');
+      logToConsole(`[BBMD 1] Received the local Original-Broadcast-NPDU. Sending a Forwarded-NPDU to BBMD 2 (192.168.2.10)...`, 'success');
 
       // BBMD 1 encapsulates and tunnels it
-      await animateLocalSegment(bbmdCoords.bbmd1, bbmdCoords.sw1, 'BVLL Tunnel', 'primary', bbmdSvgRef.value);
-      await animateLocalSegment(bbmdCoords.sw1, bbmdCoords.router, 'BVLL Tunnel', 'secondary', bbmdSvgRef.value);
-      await animateLocalSegment(bbmdCoords.router, bbmdCoords.sw2, 'BVLL Tunnel', 'secondary', bbmdSvgRef.value);
-      await animateLocalSegment(bbmdCoords.sw2, bbmdCoords.bbmd2, 'BVLL Tunnel', 'primary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.bbmd1, bbmdCoords.sw1, 'Forwarded NPDU', 'primary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.sw1, bbmdCoords.router, 'Forwarded NPDU', 'secondary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.router, bbmdCoords.sw2, 'Forwarded NPDU', 'secondary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.sw2, bbmdCoords.bbmd2, 'Forwarded NPDU', 'primary', bbmdSvgRef.value);
 
       // BBMD 2 decapsulates and broadcasts
-      logToConsole(`[BBMD 2] Unicast tunnel received. Decapsulating and broadcasting locally on Subnet 2...`, 'success');
+      logToConsole(`[BBMD 2] Forwarded-NPDU received. Distributing the embedded NPDU on Subnet 2...`, 'success');
       await animateLocalSegment(bbmdCoords.bbmd2, bbmdCoords.sw2, 'Who-Is (BC)', 'primary', bbmdSvgRef.value);
       await animateLocalSegment(bbmdCoords.sw2, bbmdCoords.devB, 'Who-Is (BC)', 'primary', bbmdSvgRef.value);
 
-      // Target receives! Success reply (unicast)
-      logToConsole(`[Device B] Received Who-Is request. Generating I-Am unicast reply to Device A (${bbmdCoords.devA.x === 87 ? '192.168.1.100' : ''})...`, 'success');
-      await animateLocalSegment(bbmdCoords.devB, bbmdCoords.sw2, 'I-Am (UC)', 'secondary', bbmdSvgRef.value);
-      await animateLocalSegment(bbmdCoords.sw2, bbmdCoords.router, 'I-Am (UC)', 'secondary', bbmdSvgRef.value);
-      await animateLocalSegment(bbmdCoords.router, bbmdCoords.sw1, 'I-Am (UC)', 'secondary', bbmdSvgRef.value);
-      await animateLocalSegment(bbmdCoords.sw1, bbmdCoords.devA, 'I-Am (UC)', 'secondary', bbmdSvgRef.value);
+      // This example uses a directed I-Am response; broadcast responses are also possible.
+      logToConsole(`[Device B] Received Who-Is. This scenario sends a directed I-Am response to Device A (192.168.1.100)...`, 'success');
+      await animateLocalSegment(bbmdCoords.devB, bbmdCoords.sw2, 'I-Am response', 'secondary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.sw2, bbmdCoords.router, 'I-Am response', 'secondary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.router, bbmdCoords.sw1, 'I-Am response', 'secondary', bbmdSvgRef.value);
+      await animateLocalSegment(bbmdCoords.sw1, bbmdCoords.devA, 'I-Am response', 'secondary', bbmdSvgRef.value);
       logToConsole(`[Device A] Received I-Am reply. Subnet discovery complete!`, 'success');
     } else {
       // Disabled mode: packet goes to router and dies
@@ -986,9 +997,9 @@ const runUnroutableIamFlow = async () => {
   try {
     logToConsole(`[Who-Is Origin 10.10.10.50] Broadcasting Who-Is on the BMS LAN.`, 'info');
     await animateLocalSegment(unroutableCoords.origin, unroutableCoords.bbmdA, 'Who-Is (BC)', 'primary', unroutableSvgRef.value);
-    logToConsole(`[BMS BBMD] Forwarding the discovery through its BDT tunnel to OT BBMD 172.20.40.10.`, 'success');
-    await animateLocalSegment(unroutableCoords.bbmdA, unroutableCoords.router, 'BVLL Tunnel', 'secondary', unroutableSvgRef.value);
-    await animateLocalSegment(unroutableCoords.router, unroutableCoords.bbmdB, 'BVLL Tunnel', 'secondary', unroutableSvgRef.value);
+    logToConsole(`[BMS BBMD] Sending a Forwarded-NPDU to OT BBMD 172.20.40.10 using its BDT entry.`, 'success');
+    await animateLocalSegment(unroutableCoords.bbmdA, unroutableCoords.router, 'Forwarded NPDU', 'secondary', unroutableSvgRef.value);
+    await animateLocalSegment(unroutableCoords.router, unroutableCoords.bbmdB, 'Forwarded NPDU', 'secondary', unroutableSvgRef.value);
     await animateLocalSegment(unroutableCoords.bbmdB, unroutableCoords.device, 'Who-Is (BC)', 'primary', unroutableSvgRef.value);
 
     logToConsole(`[Device 2001] Who-Is received. Advertising I-Am from 172.20.40.25.`, 'success');
@@ -1329,16 +1340,16 @@ const runShFlow = async (source: 'A' | 'B') => {
 
   try {
     if (source === 'A') {
-      logToConsole(`[BMS A] Broadcaster triggers global discover. Tunneling to registered BDT partners...`, 'info');
-      logToConsole(`[BMS A] BDT contains BBMD B & BBMD C. Sending parallel unicast tunnels...`, 'info');
+      logToConsole(`[BMS A] Broadcaster triggers global discovery. Distributing it to the configured BDT peers...`, 'info');
+      logToConsole(`[BMS A] BDT contains BBMD B and BBMD C. Sending parallel Forwarded-NPDUs...`, 'info');
 
       await Promise.all([
         animateLocalSegment(shCoords.A, shCoords.B, 'BVLL Tunnel', 'primary', shSvgRef.value),
         animateLocalSegment(shCoords.A, shCoords.C, 'BVLL Tunnel', 'primary', shSvgRef.value)
       ]);
 
-      logToConsole(`[BBMD B] Received unicast tunnel from BMS A. Relaying broadcast to Tenant 1.`, 'success');
-      logToConsole(`[BBMD C] Received unicast tunnel from BMS A. Relaying broadcast to Tenant 2.`, 'success');
+      logToConsole(`[BBMD B] Received the Forwarded-NPDU from BMS A and distributes it on Tenant 1.`, 'success');
+      logToConsole(`[BBMD C] Received the Forwarded-NPDU from BMS A and distributes it on Tenant 2.`, 'success');
       logToConsole(`[Result] BMS discovery reached all tenants successfully.`, 'success');
     }
     else if (source === 'B') {
@@ -1346,25 +1357,25 @@ const runShFlow = async (source: 'A' | 'B') => {
 
       if (splitHorizonMode.value === 'symmetric') {
         logToConsole(`[BBMD B] Symmetric mode: BDT registers BMS A & Tenant 2 C.`, 'info');
-        logToConsole(`[BBMD B] Tunneling parallel unicasts to BBMD A and BBMD C...`, 'info');
+        logToConsole(`[BBMD B] Sending a Forwarded-NPDU to BBMD A and BBMD C...`, 'info');
 
         await Promise.all([
           animateLocalSegment(shCoords.B, shCoords.A, 'BVLL Tunnel', 'primary', shSvgRef.value),
           animateLocalSegment(shCoords.B, shCoords.C, 'BVLL Tunnel', 'primary', shSvgRef.value)
         ]);
 
-        logToConsole(`[BMS A] Received tunnel from Tenant 1. Broadcast relayed to BMS segment.`, 'success');
-        logToConsole(`[BBMD C] Received tunnel from Tenant 1. Broadcast relayed to Tenant 2 segment.`, 'success');
-        logToConsole(`[Result] Security exposure! Tenant 1 discovery leaked to Tenant 2.`, 'warning');
+        logToConsole(`[BMS A] Received the Forwarded-NPDU from Tenant 1 and distributes it on the BMS segment.`, 'success');
+        logToConsole(`[BBMD C] Received the Forwarded-NPDU from Tenant 1 and distributes it on Tenant 2.`, 'success');
+        logToConsole(`[Result] Tenant 1 discovery also reached Tenant 2. Use an actual security control if that traffic must be prohibited.`, 'warning');
       } else {
         logToConsole(`[BBMD B] Split Horizon mode: BDT registers BMS A *only* (Tenant 2 C is excluded).`, 'warning');
-        logToConsole(`[BBMD B] Tunneling unicast *only* to BBMD A...`, 'info');
+        logToConsole(`[BBMD B] Sending the Forwarded-NPDU *only* to BBMD A...`, 'info');
 
         await animateLocalSegment(shCoords.B, shCoords.A, 'BVLL Tunnel', 'primary', shSvgRef.value);
 
-        logToConsole(`[BMS A] Received tunnel from Tenant 1. Broadcast relayed to BMS segment.`, 'success');
-        logToConsole(`[Tenant 2 C] Isolated: BBMD C never receives Tenant 1 broadcasts. Broadcast contained!`, 'success');
-        logToConsole(`[Result] Success! Broadcast contained at the subnet boundary.`, 'success');
+        logToConsole(`[BMS A] Received the Forwarded-NPDU from Tenant 1 and distributes it on the BMS segment.`, 'success');
+        logToConsole(`[Tenant 2 C] BBMD C is not included in this configured distribution path.`, 'success');
+        logToConsole(`[Result] The modeled broadcast distribution is limited, but the BDT is not an authorization boundary.`, 'success');
       }
     }
   } catch (err) {

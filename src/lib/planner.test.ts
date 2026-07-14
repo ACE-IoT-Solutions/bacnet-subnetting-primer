@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, PlannerSubnet } from './planner';
+import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, getBmsHostOffset, PlannerSubnet } from './planner';
 
 describe('Subnet Auto-sizing (calculateAutoSizeCidr)', () => {
   it('should auto-size to /27 for small device counts', () => {
@@ -103,5 +103,14 @@ describe('Subnet Overlap Classification (classifyOverlap)', () => {
   it('does not apply IPv4 overlap checks to MS/TP or ARCNET networks', () => {
     const serial = { ...baseSubnetA, id: 'serial', networkType: 'mstp' as const, bacnetNetworkNumber: 2001 };
     expect(classifyOverlap(baseSubnetA, serial)).toBeNull();
+  });
+});
+
+describe('BMS address assignment', () => {
+  it('uses the BBMD offset when the BMS is the local BBMD', () => {
+    const subnet = { bmsRole: 'bbmd', bbmdEnabled: true, bbmdOffset: 10 } as PlannerSubnet;
+    expect(getBmsHostOffset(subnet)).toBe(10);
+    subnet.bmsRole = 'fdr';
+    expect(getBmsHostOffset(subnet)).toBe(20);
   });
 });

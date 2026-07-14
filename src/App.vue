@@ -1,5 +1,6 @@
 <template>
   <div class="app-container">
+    <AceNetworkIconSymbols />
     <!-- Header -->
     <header>
       <div class="logo-section">
@@ -96,6 +97,7 @@ import CalculatorPage from './components/CalculatorPage.vue';
 import PrimerPage from './components/PrimerPage.vue';
 import PlannerPage from './components/PlannerPage.vue';
 import NetworkDiagramPage from './components/NetworkDiagramPage.vue';
+import AceNetworkIconSymbols from './components/AceNetworkIconSymbols.vue';
 
 interface LogEntry {
   text: string;
@@ -128,10 +130,14 @@ updateTabFromHash();
 
 onMounted(() => {
   window.addEventListener('hashchange', updateTabFromHash);
+  window.addEventListener('ace-open-planned-diagram', openPlannedDiagram);
 });
+
+const openPlannedDiagram = () => setActiveTab('diagram');
 
 onUnmounted(() => {
   window.removeEventListener('hashchange', updateTabFromHash);
+  window.removeEventListener('ace-open-planned-diagram', openPlannedDiagram);
 });
 
 const logs = ref<LogEntry[]>([

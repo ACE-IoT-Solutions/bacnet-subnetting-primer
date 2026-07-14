@@ -18,7 +18,7 @@
       </div>
 
       <!-- Device A Inputs -->
-      <div style="margin-bottom: 2rem; border-left: 3px solid var(--primary); padding-left: 0.75rem;">
+      <div class="calculator-device-group source">
         <h3 style="font-family: var(--font-heading); font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary);">Device A (Source)</h3>
         <div class="form-group">
           <label>IP Address</label>
@@ -36,7 +36,7 @@
       </div>
 
       <!-- Device B Inputs -->
-      <div style="border-left: 3px solid var(--secondary); padding-left: 0.75rem;">
+      <div class="calculator-device-group destination">
         <h3 style="font-family: var(--font-heading); font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--secondary);">Device B (Destination)</h3>
         <div class="form-group">
           <label>IP Address</label>
@@ -54,15 +54,15 @@
       </div>
 
       <!-- BBMD Infrastructure Configuration Panel -->
-      <div v-if="isRouted" style="border-top: 1px solid var(--border-color); margin-top: 1.5rem; padding-top: 1.5rem;">
+      <div v-if="isRouted" class="calculator-bbmd-config">
         <h3 style="font-family: var(--font-heading); font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect></svg>
           BBMD Configuration
         </h3>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem; line-height: 1.35;">BBMD is required to relay discoveries (Who-Is) between separate subnets. Configure their parameters below.</p>
+        <p class="field-hint">This scenario uses one BACnet/IP network spanning two IP subnets. Configure BBMD distribution for broadcast discovery; already-addressed unicast uses ordinary IP routing.</p>
 
         <!-- BBMD A Config -->
-        <div style="margin-bottom: 1.25rem; padding-left: 0.5rem; border-left: 2px solid var(--primary);">
+        <div class="calculator-bbmd-node source">
           <label style="font-size: 0.8rem; color: var(--primary); font-weight: 600; display: block; margin-bottom: 0.25rem;">Subnet A BBMD IP</label>
           <input type="text" v-model="bbmdAIp" placeholder="e.g. 192.168.0.99" style="padding: 0.35rem 0.5rem; font-size: 0.85rem; margin-bottom: 0.5rem; width: 100%;">
 
@@ -73,7 +73,7 @@
         </div>
 
         <!-- BBMD B Config -->
-        <div style="padding-left: 0.5rem; border-left: 2px solid var(--secondary);">
+        <div class="calculator-bbmd-node destination">
           <label style="font-size: 0.8rem; color: var(--secondary); font-weight: 600; display: block; margin-bottom: 0.25rem;">Subnet B BBMD IP</label>
           <input type="text" v-model="bbmdBIp" placeholder="e.g. 192.168.1.99" style="padding: 0.35rem 0.5rem; font-size: 0.85rem; margin-bottom: 0.5rem; width: 100%;">
 
@@ -190,7 +190,8 @@
           <!-- Switch A -->
           <g class="node-group" id="sim-node-swA">
             <rect x="290" y="200" width="60" height="40" rx="6" fill="#1e293b" stroke="#475569" stroke-width="2"></rect>
-            <text x="320" y="224" font-family="Inter" font-size="11" fill="#cbd5e1" text-anchor="middle">
+            <use href="#ace-sim-network" class="sim-node-icon" x="310" y="204" width="20" height="20" />
+            <text x="320" y="234" class="sim-node-caption">
               {{ isRouted ? 'Switch A' : 'Switch' }}
             </text>
           </g>
@@ -198,19 +199,18 @@
           <!-- Switch B -->
           <g v-show="isRouted" class="node-group" id="sim-node-swB">
             <rect x="450" y="200" width="60" height="40" rx="6" fill="#1e293b" stroke="#475569" stroke-width="2"></rect>
-            <text x="480" y="224" font-family="Inter" font-size="11" fill="#cbd5e1" text-anchor="middle">Switch B</text>
+            <use href="#ace-sim-network" class="sim-node-icon" x="470" y="204" width="20" height="20" />
+            <text x="480" y="234" class="sim-node-caption">Switch B</text>
           </g>
 
           <!-- IP Router -->
-          <g v-show="isRouterVisible" class="node-group" id="sim-node-router">
-            <circle cx="400" cy="100" r="24" fill="#1a2238" stroke="#475569" stroke-width="2"></circle>
-            <text x="400" y="104" font-family="Inter" font-size="10" fill="#94a3b8" text-anchor="middle">Router</text>
-          </g>
+          <AceSvgNetworkNode v-show="isRouterVisible" :x="400" :y="100" :radius="24" :icon-size="24" label="Router" />
 
           <!-- Device A Node -->
           <g class="node-group" id="sim-node-devA">
             <rect x="40" y="120" width="120" height="65" rx="8"></rect>
-            <text x="100" y="142" class="node-label">Device A</text>
+            <use href="#ace-sim-device" class="sim-node-icon" x="50" y="130" width="22" height="22" />
+            <text x="110" y="142" class="node-label">Device A</text>
             <text x="100" y="158" class="node-ip">{{ devAIp }}</text>
             <text x="100" y="172" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">/{{ devACidr }}</text>
           </g>
@@ -218,7 +218,8 @@
           <!-- Device B Node -->
           <g class="node-group" id="sim-node-devB">
             <rect x="640" y="120" width="120" height="65" rx="8"></rect>
-            <text x="700" y="142" class="node-label">Device B</text>
+            <use href="#ace-sim-device" class="sim-node-icon secondary" x="650" y="130" width="22" height="22" />
+            <text x="710" y="142" class="node-label">Device B</text>
             <text x="700" y="158" class="node-ip">{{ devBIp }}</text>
             <text x="700" y="172" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">/{{ devBCidr }}</text>
           </g>
@@ -243,9 +244,9 @@
 
         <!-- Simulator Actions Buttons -->
         <div class="sim-controls-panel">
-          <AceToggle v-model="bcastIam" class="sim-option-toggle" label="Send I-Am replies as broadcasts" description="Standard BACnet behavior" />
+          <AceToggle v-model="bcastIam" class="sim-option-toggle" label="Broadcast I-Am in this scenario" description="Compare broadcast and directed response paths" />
 
-          <AceToggle v-if="isRouted" v-model="bbmdEnabled" class="sim-option-toggle" label="Enable BBMD over tunnel" />
+          <AceToggle v-if="isRouted" v-model="bbmdEnabled" class="sim-option-toggle" label="Enable BBMD distribution" />
 
            <AppButton variant="primary" :disabled="isAnimating" @click="runSimulation('bcast-a')">
             <template #icon>
@@ -279,6 +280,7 @@ import { ref, computed, watch, inject } from 'vue';
 import TerminalLog from './TerminalLog.vue';
 import AppButton from './AppButton.vue';
 import AceToggle from './AceToggle.vue';
+import AceSvgNetworkNode from './AceSvgNetworkNode.vue';
 import {
   ipToLong,
   longToIp,
@@ -389,14 +391,14 @@ const verdict = computed(() => {
       class: 'verdict-success',
       title: 'Subnets Match: Direct BACnet/IP Enabled',
       icon: `<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>`,
-      body: `Both Device A and Device B belong to the exact same subnet (${dA.network}/${dA.cidr}). Unicast and broadcast BACnet services will work natively without BBMD routing infrastructure.`
+      body: `Both devices calculate the same IP subnet (${dA.network}/${dA.cidr}), so local unicast and local B/IP broadcast do not require a router or BBMD. Communication can still fail because of duplicate IPs, host firewalls, switch/VLAN isolation, different BACnet UDP ports, or a stopped BACnet service.`
     };
   } else if (r.broadcastIntersectionTrap) {
     return {
       class: 'verdict-error',
       title: 'Broadcast Intersection Trap Detected!',
       icon: `<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>`,
-      body: `<strong>Asymmetrical communication failure!</strong> Devices A and B share the identical broadcast address (<code>${dA.broadcast}</code>) but belong to separate logical subnets: Device A is <code>/${dA.cidr}</code>, Device B is <code>/${dB.cidr}</code>. <br><br>Because they share a physical segment, local BACnet broadcasts (Who-Is) will reach both nodes. Device A sees Device B's IP as local and replies directly. However, Device B sees Device A as remote and attempts to reply through its router gateway. Direct unicast communication will fail unless asymmetric routes are specially configured.`
+      body: `<strong>Asymmetric forwarding risk.</strong> The masks produce the same broadcast destination (<code>${dA.broadcast}</code>) but different local/remote decisions. On a shared VLAN, both IP stacks may accept the discovery. Device A sends directly while Device B sends toward its gateway. Failure is plausible when the gateway is absent or wrong, a return route is missing, proxy ARP behaves unexpectedly, or an ACL blocks the directed reply.`
     };
   } else if (r.asymmetricalSubnet) {
     const localThinker = r.aThinksBInSubnet ? 'Device A' : 'Device B';
@@ -405,21 +407,21 @@ const verdict = computed(() => {
       class: 'verdict-warning',
       title: 'Asymmetrical Overlapping Subnets',
       icon: `<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>`,
-      body: `One-way local communication trap! <strong>${localThinker}</strong> thinks the other is local, but <strong>${remoteThinker}</strong> thinks the other is remote. This is caused by unequal subnet mask definitions. ${localThinker} will send direct ARP and Layer 2 frames, while ${remoteThinker} will send replies to its gateway, creating broken connections.`
+      body: `<strong>${localThinker}</strong> treats the peer as on-link while <strong>${remoteThinker}</strong> treats it as off-link because the masks differ. This does not guarantee failure, but it creates an asymmetric path. Check gateway configuration, routes in both directions, proxy ARP, ACLs, and whether both switch ports are actually in the same VLAN.`
     };
   } else if (r.overlappingSubnet) {
     return {
       class: 'verdict-warning',
       title: 'Symmetrical Subnet Overlap: Broadcast Mismatch',
       icon: `<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>`,
-      body: `<strong>Symmetrical subnet overlap detected!</strong> Both Device A and Device B believe the other is local because their IP addresses fall within each other's usable ranges. <br><br>Direct unicast communication (such as ReadProperty) will work because both sides will send replies locally over Layer 2. However, because they have different subnet masks (<code>/${dA.cidr}</code> vs <code>/${dB.cidr}</code>), they calculate different broadcast IPs (<code>${dA.broadcast}</code> vs <code>${dB.broadcast}</code>). Consequently, their IP stacks will drop each other's local BACnet discoveries (Who-Is), preventing automatic device binding.`
+      body: `Both devices classify the peer as on-link, so directed traffic is expected to use ARP and Layer 2 delivery when they share a VLAN. Their different masks produce different broadcast addresses (<code>${dA.broadcast}</code> vs <code>${dB.broadcast}</code>), so a local Who-Is sent to one broadcast address may not be delivered to or accepted by the other host. Verify VLAN membership, host broadcast handling, BACnet ports, and masks.`
     };
   } else {
     return {
       class: 'verdict-warning',
-      title: 'Isolated Subnets: BBMD Infrastructure Required',
+      title: 'Separate IP Subnets: Broadcast Distribution Needed',
       icon: `<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>`,
-      body: `Device A (${dA.network}/${dA.cidr}) and Device B (${dB.network}/${dB.cidr}) are in completely separate subnets. Routers will block their local BACnet discoveries. To resolve, configure BBMDs on both subnets or register Device B as a Foreign Device (FDR).`
+      body: `The devices are on separate IP subnets. Ordinary IP routing can carry directed BACnet/IP traffic, but it does not forward the local B/IP broadcast used in this simulation. For one BACnet/IP network spanning both subnets, configure Annex J broadcast distribution or foreign-device registration. If they are distinct BACnet network numbers, use a BACnet router. Also verify routes, return routes, UDP ports, ACLs, and BDT/FDT entries.`
     };
   }
 });
@@ -555,14 +557,14 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
           animatePacket(coords.swA, coords.router, 'Who-Is (BC)')
         ]);
 
-        logToConsole(`[Router] Received broadcast. Dropped (IP Routers block UDP broadcasts).`, 'error');
+        logToConsole(`[Router] The local IP broadcast is not forwarded by this router configuration.`, 'error');
         logToConsole(`[Device B] Received Who-Is. Believes sender A (${dA.ip}) is remote.`, 'warning');
         logToConsole(`[Device B] Generating I-Am reply. Target is remote: routing to Gateway...`, 'warning');
 
         await animatePacket(coords.devB, coords.swA, 'I-Am (UC)', 'secondary');
         await animatePacket(coords.swA, coords.router, 'I-Am (UC)', 'secondary');
-        logToConsole(`[Router] Received routed reply from B for remote IP ${dA.ip}.`, 'error');
-        logToConsole(`[Router] DROP: Device A (${dA.ip}) is on the same physical link. Router will not loop packet back. Packet lost!`, 'error');
+        logToConsole(`[Router] Received the reply addressed to ${dA.ip}.`, 'error');
+        logToConsole(`[Router] This scenario has no valid hairpin/return path to Device A, so the reply is dropped.`, 'error');
         logToConsole(`[Device A] TIMEOUT. Device A never receives I-Am from Device B. Discovery failed.`, 'error');
       }
       else if (r.asymmetricalSubnet) {
@@ -591,7 +593,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
             logToConsole(`[Device B] Thinks A is remote. Routing I-Am reply to Gateway...`, 'warning');
             await animatePacket(coords.devB, coords.swA, 'I-Am (UC)', 'secondary');
             await animatePacket(coords.swA, coords.router, 'I-Am (UC)', 'secondary');
-            logToConsole(`[Router] Routed packet dropped due to asymmetrical hairpin interface rules.`, 'error');
+            logToConsole(`[Router] This modeled gateway has no valid hairpin/return path, so the reply is dropped.`, 'error');
             logToConsole(`[Device A] TIMEOUT. Discovery failed.`, 'error');
           }
         }
@@ -605,8 +607,8 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
         logToConsole(`[Router] Dropped broadcast.`, 'error');
 
         logToConsole(`[Device B] Received broadcast frame on port 47808.`, 'warning');
-        logToConsole(`[Device B] DROP: Packet Broadcast IP (${dA.broadcast}) does not match B's broadcast IP (${dB.broadcast}).`, 'error');
-        logToConsole(`[Device B] No response generated (broadcast mismatch).`, 'error');
+        logToConsole(`[Device B] This simulation rejects destination ${dA.broadcast}; B is configured to use ${dB.broadcast}.`, 'error');
+        logToConsole(`[Device B] No response is generated under the modeled receive policy.`, 'error');
         logToConsole(`[Device A] TIMEOUT. Discovery failed.`, 'error');
       }
       else {
@@ -618,7 +620,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
           logToConsole(`[Subnet A] No BBMD configured. Broadcast Who-Is cannot cross subnets.`, 'error');
           logToConsole(`[Device B] Never received Who-Is. Discovery failed.`, 'error');
         } else {
-          logToConsole(`[BBMD A] Intercepted local Who-Is broadcast. Wrapping into BVLL unicast tunnel to BBMD B (${bbmdBIp.value})...`, 'success');
+          logToConsole(`[BBMD A] Received the Original-Broadcast-NPDU. Sending a Forwarded-NPDU to BBMD B (${bbmdBIp.value})...`, 'success');
           await animatePacket(coords.bbmd1, coords.swA, 'BVLL (UC)');
           await animatePacket(coords.swA, coords.router, 'BVLL (UC)');
           await animatePacket(coords.router, coords.swB, 'BVLL (UC)');
@@ -629,13 +631,12 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
           const selfALong = ipToLong(bbmdAIp.value);
 
           if (longB === null || selfALong === null || !bdtB.includes(selfALong)) {
-            logToConsole(`[BBMD B] DROP: Received BVLL tunnel packet but sender BBMD A (${bbmdAIp.value}) is not in BBMD B's BDT table. Registration mismatch!`, 'error');
+            logToConsole(`[BBMD B] This modeled configuration rejects the Forwarded-NPDU because BBMD A (${bbmdAIp.value}) is absent from BBMD B's configured peer list.`, 'error');
             logToConsole(`[Device B] Never received Who-Is. Discovery failed.`, 'error');
             return;
           }
 
-          logToConsole(`[BBMD B] Unicast tunnel packet received. Extracting original Who-Is broadcast.`, 'success');
-          logToConsole(`[BBMD B] Broadcasting Who-Is locally on Subnet B...`, 'success');
+          logToConsole(`[BBMD B] Forwarded-NPDU received. Distributing the embedded Who-Is on Subnet B...`, 'success');
           await animatePacket(coords.bbmd2, coords.swB, 'Who-Is (BC)');
           await animatePacket(coords.swB, coords.devB, 'Who-Is (BC)');
 
@@ -648,7 +649,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
             ]);
             logToConsole(`[Router] Received broadcast. Dropped.`, 'error');
 
-            logToConsole(`[BBMD B] Intercepted local broadcast. Wrapping into BVLL unicast tunnel to BBMD A (${bbmdAIp.value})...`, 'success');
+            logToConsole(`[BBMD B] Received the local Original-Broadcast-NPDU. Sending a Forwarded-NPDU to BBMD A (${bbmdAIp.value})...`, 'success');
             await animatePacket(coords.bbmd2, coords.swB, 'BVLL (UC)', 'secondary');
             await animatePacket(coords.swB, coords.router, 'BVLL (UC)', 'secondary');
             await animatePacket(coords.router, coords.swA, 'BVLL (UC)', 'secondary');
@@ -659,16 +660,15 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
             const selfBLong = ipToLong(bbmdBIp.value);
 
             if (longA === null || selfBLong === null || !bdtA.includes(selfBLong)) {
-              logToConsole(`[Subnet A] Received tunnel packet but destination BBMD A is inactive/unregistered. Dropped.`, 'error');
+              logToConsole(`[Subnet A] The Forwarded-NPDU cannot be delivered because BBMD A is inactive or missing from this configuration.`, 'error');
               logToConsole(`[Device A] TIMEOUT. Discovery failed.`, 'error');
               return;
             }
 
-            logToConsole(`[BBMD A] Unicast tunnel packet received. Extracting original Who-Is broadcast.`, 'success');
-            logToConsole(`[BBMD A] Broadcasting I-Am locally on Subnet A...`, 'success');
+            logToConsole(`[BBMD A] Forwarded-NPDU received. Distributing the embedded I-Am on Subnet A...`, 'success');
             await animatePacket(coords.bbmd1, coords.swA, 'I-Am (BC)', 'secondary');
             await animatePacket(coords.swA, coords.devA, 'I-Am (BC)', 'secondary');
-            logToConsole(`[Device A] Received I-Am broadcast reply. Discovery successful via two-way BBMD Tunnel!`, 'success');
+            logToConsole(`[Device A] Received the I-Am. Discovery succeeded through BBMD broadcast distribution.`, 'success');
           } else {
             logToConsole(`[Device B] Received Who-Is. Generating I-Am unicast reply to remote sender ${dA.ip}`, 'success');
             await animatePacket(coords.devB, coords.swB, 'I-Am (UC)', 'secondary');
@@ -696,8 +696,8 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
 
         if (r.overlappingSubnet) {
           logToConsole(`[Device A] Received broadcast frame on port 47808.`, 'warning');
-          logToConsole(`[Device A] DROP: Packet Broadcast IP (${dB.broadcast}) does not match A's broadcast IP (${dA.broadcast}).`, 'error');
-          logToConsole(`[Device A] No response generated (broadcast mismatch).`, 'error');
+          logToConsole(`[Device A] This simulation rejects destination ${dB.broadcast}; A is configured to use ${dA.broadcast}.`, 'error');
+          logToConsole(`[Device A] No response is generated under the modeled receive policy.`, 'error');
           logToConsole(`[Device B] TIMEOUT. Discovery failed.`, 'error');
           return;
         }
@@ -734,7 +734,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
           logToConsole(`[Subnet B] No BBMD configured. Broadcast cannot cross subnets.`, 'error');
           logToConsole(`[Device A] Never received Who-Is. Discovery failed.`, 'error');
         } else {
-          logToConsole(`[BBMD B] Intercepted broadcast. Wrapping into BVLL unicast tunnel to BBMD A (${bbmdAIp.value})...`, 'success');
+          logToConsole(`[BBMD B] Received the Original-Broadcast-NPDU. Sending a Forwarded-NPDU to BBMD A (${bbmdAIp.value})...`, 'success');
           await animatePacket(coords.bbmd2, coords.swB, 'BVLL (UC)');
           await animatePacket(coords.swB, coords.router, 'BVLL (UC)');
           await animatePacket(coords.router, coords.swA, 'BVLL (UC)');
@@ -745,13 +745,12 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
           const selfBLong = ipToLong(bbmdBIp.value);
 
           if (longA === null || selfBLong === null || !bdtA.includes(selfBLong)) {
-            logToConsole(`[BBMD A] DROP: Received BVLL tunnel packet but sender BBMD B (${bbmdBIp.value}) is not in BBMD A's BDT table.`, 'error');
+            logToConsole(`[BBMD A] This modeled configuration rejects the Forwarded-NPDU because BBMD B (${bbmdBIp.value}) is absent from BBMD A's configured peer list.`, 'error');
             logToConsole(`[Device A] Never received Who-Is. Discovery failed.`, 'error');
             return;
           }
 
-          logToConsole(`[BBMD A] Unicast tunnel packet received. Extracting Who-Is broadcast.`, 'success');
-          logToConsole(`[BBMD A] Broadcasting Who-Is locally on Subnet A...`, 'success');
+          logToConsole(`[BBMD A] Forwarded-NPDU received. Distributing the embedded Who-Is on Subnet A...`, 'success');
           await animatePacket(coords.bbmd1, coords.swA, 'Who-Is (BC)');
           await animatePacket(coords.swA, coords.devA, 'Who-Is (BC)');
 
@@ -764,7 +763,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
             ]);
             logToConsole(`[Router] Received broadcast. Dropped.`, 'error');
 
-            logToConsole(`[BBMD A] Intercepted local broadcast. Wrapping into BVLL unicast tunnel to BBMD B (${bbmdBIp.value})...`, 'success');
+            logToConsole(`[BBMD A] Received the local Original-Broadcast-NPDU. Sending a Forwarded-NPDU to BBMD B (${bbmdBIp.value})...`, 'success');
             await animatePacket(coords.bbmd1, coords.swA, 'BVLL (UC)', 'secondary');
             await animatePacket(coords.swA, coords.router, 'BVLL (UC)', 'secondary');
             await animatePacket(coords.router, coords.swB, 'BVLL (UC)', 'secondary');
@@ -775,13 +774,12 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
             const selfALong = ipToLong(bbmdAIp.value);
 
             if (longB === null || selfALong === null || !bdtB.includes(selfALong)) {
-              logToConsole(`[Subnet B] Received tunnel packet but destination BBMD B is inactive/unregistered. Dropped.`, 'error');
+              logToConsole(`[Subnet B] The Forwarded-NPDU cannot be delivered because BBMD B is inactive or missing from this configuration.`, 'error');
               logToConsole(`[Device B] TIMEOUT. Discovery failed.`, 'error');
               return;
             }
 
-            logToConsole(`[BBMD B] Unicast tunnel packet received. Extracting original Who-Is broadcast.`, 'success');
-            logToConsole(`[BBMD B] Broadcasting I-Am locally on Subnet B...`, 'success');
+            logToConsole(`[BBMD B] Forwarded-NPDU received. Distributing the embedded I-Am on Subnet B...`, 'success');
             await animatePacket(coords.bbmd2, coords.swB, 'I-Am (BC)', 'secondary');
             await animatePacket(coords.swB, coords.devB, 'I-Am (BC)', 'secondary');
             logToConsole(`[Device B] Received I-Am broadcast reply. Discovery successful!`, 'success');

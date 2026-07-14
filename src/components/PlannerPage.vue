@@ -29,13 +29,14 @@
             <AceToggle v-model="splitHorizon" label="Split horizon routing" />
           </div>
           <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <!-- Primary Action: Add Subnet (Lime) -->
-            <AppButton variant="primary" @click="addSubnet" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
+            <AppButton variant="primary" @click="addNetwork('bacnet-ip')" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
               <template #icon>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 15px; height: 15px; margin-right: 0.5rem;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               </template>
-              <span style="white-space: nowrap;">Add Network</span>
+              <span style="white-space: nowrap;">Add IP subnet</span>
             </AppButton>
+            <AppButton variant="secondary" size="sm" @click="addNetwork('mstp')" style="flex: none; min-width: auto;">+ MS/TP segment</AppButton>
+            <AppButton variant="secondary" size="sm" @click="addNetwork('arcnet')" style="flex: none; min-width: auto;">+ ARCNET segment</AppButton>
 
             <!-- Secondary Action: Quick Setup Wizard (Blue) -->
             <AppButton variant="secondary" @click="showWizard = true" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
@@ -118,7 +119,7 @@
               <!-- Right Column: BACnet Configuration -->
               <div style="display: flex; flex-direction: column; gap: 0.6rem; border-left: 1px solid rgba(255, 255, 255, 0.05); padding-left: 1rem;">
                 <!-- BBMD configuration -->
-                <AceToggle v-model="sub.bbmdEnabled" label="Enable BBMD router" />
+                <AceToggle :model-value="sub.bbmdEnabled" label="Enable BBMD router" @update:model-value="handleBbmdToggle(sub, $event)" />
 
                 <div v-if="sub.bbmdEnabled" style="margin-left: 1.25rem;">
                   <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">BBMD Host Offset (.{{ sub.bbmdOffset }})</label>
@@ -143,7 +144,8 @@
                 <AceToggle :model-value="sub.bmsPlaced" label="Host BMS server here" @update:model-value="toggleBmsPlaced(sub)" />
 
                 <div v-if="sub.bmsPlaced" style="margin-left: 1.25rem; margin-top: 0.2rem;">
-                  <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">BMS IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, 20) || 'Invalid' }}</strong> (.20)</span>
+                  <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">BMS IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, getBmsHostOffset(sub)) || 'Invalid' }}</strong> (.{{ getBmsHostOffset(sub) }})</span>
+                  <span v-if="sub.bmsRole === 'bbmd'" class="field-hint">The BMS owns the configured BBMD address.</span>
 
                   <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.15rem;">BMS Network Role:</label>
                   <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem;">
@@ -169,6 +171,7 @@
             </div>
             <div v-else class="planner-card-grid">
               <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div class="form-group" style="margin:0;"><label>Upstream routed network</label><select v-model="sub.upstreamIpSubnetId"><option value="">Choose upstream network</option><option v-for="upstream in upstreamNetworkOptions(sub)" :key="upstream.id" :value="upstream.id">{{ upstream.name }} — {{ networkSummary(upstream) }}</option></select></div>
                 <div class="form-group" style="margin:0;"><label>BACnet network number</label><input v-model.number="sub.bacnetNetworkNumber" type="number" min="1" max="65534" placeholder="e.g. 2001"></div>
                 <div class="form-group" style="margin:0;"><label>Planned device count</label><input v-model.number="sub.plannedDevices" type="number" min="0" :max="sub.networkType === 'mstp' ? 128 : 256"></div>
               </div>
@@ -179,6 +182,10 @@
               <div v-else style="display:flex; flex-direction:column; gap:0.75rem;">
                 <div class="form-group" style="margin:0;"><label>Data rate</label><select v-model.number="sub.arcnetDataRate"><option :value="156">156.25 kbps</option><option :value="2500">2.5 Mbps</option><option :value="5000">5 Mbps</option><option :value="10000">10 Mbps</option></select></div>
                 <span style="font-size:.78rem;color:var(--text-muted)">ARCNET node addresses are entered as 0–255 in the diagram tool.</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div class="form-group" style="margin:0;"><label>Routing device name</label><input v-model="sub.routerName" type="text" placeholder="e.g. AHU Controller / Router"></div>
+                <div class="form-group" style="margin:0;"><label>Routing device address on upstream</label><input v-model="sub.routerIp" type="text" :placeholder="routerAddressPlaceholder(sub)"></div>
               </div>
             </div>
           </div>
@@ -247,6 +254,7 @@
             </template>
             Export Planning Spreadsheet (.xlsx)
           </AppButton>
+          <AppButton variant="primary" block @click="visualizePlan">Visualize in Diagram Builder</AppButton>
         </div>
 
         <!-- Live Spreadsheet Preview -->
@@ -342,8 +350,9 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { PlannerSubnet } from '../lib/planner';
 import { getSubnetDetails, getOffsetIp, ipToLong, longToIp } from '../lib/subnet';
-import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, isIpNetwork } from '../lib/planner';
+import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, getBmsHostOffset, isIpNetwork } from '../lib/planner';
 import { exportPlannerXlsx } from '../lib/export-xlsx';
+import { createDiagramProjectFromPlan } from '../lib/network-diagram';
 import AppButton from './AppButton.vue';
 import AceCheckbox from './AceCheckbox.vue';
 import AceToggle from './AceToggle.vue';
@@ -408,8 +417,21 @@ const subnets = ref<PlannerSubnet[]>(JSON.parse(JSON.stringify(DEFAULT_SUBNETS))
 })));
 const normalizeNetwork = (sub: PlannerSubnet) => Object.assign(sub, {
   networkType: sub.networkType || 'bacnet-ip', bacnetNetworkNumber: sub.bacnetNetworkNumber ?? '',
-  mstpBaudRate: sub.mstpBaudRate ?? 38400, mstpMaxMaster: sub.mstpMaxMaster ?? 127, arcnetDataRate: sub.arcnetDataRate ?? 2500
+  mstpBaudRate: sub.mstpBaudRate ?? 38400, mstpMaxMaster: sub.mstpMaxMaster ?? 127, arcnetDataRate: sub.arcnetDataRate ?? 2500,
+  upstreamIpSubnetId: sub.upstreamIpSubnetId ?? '', routerName: sub.routerName ?? '', routerIp: sub.routerIp ?? ''
 });
+const ipSubnets = computed(() => subnets.value.filter(isIpNetwork));
+const upstreamNetworkOptions = (sub: PlannerSubnet) => subnets.value.filter(candidate => candidate.id !== sub.id
+  && (isIpNetwork(candidate) || candidate.networkType === sub.networkType));
+const networkSummary = (sub: PlannerSubnet) => isIpNetwork(sub) ? `${sub.ip}/${sub.cidr}` : `${sub.networkType === 'mstp' ? 'MS/TP' : 'ARCNET'} network ${sub.bacnetNetworkNumber || 'not set'}`;
+const upstreamFor = (sub: PlannerSubnet) => subnets.value.find(item => item.id === sub.upstreamIpSubnetId);
+const routerAddressPlaceholder = (sub: PlannerSubnet) => upstreamFor(sub)?.networkType === 'mstp' ? 'MS/TP MAC' : upstreamFor(sub)?.networkType === 'arcnet' ? 'ARCNET node' : 'e.g. 192.168.1.40';
+const routerAddressValid = (sub: PlannerSubnet, upstream: PlannerSubnet | undefined) => {
+  if (!upstream || !sub.routerIp?.trim()) return false;
+  if (isIpNetwork(upstream)) return ipToLong(sub.routerIp) !== null;
+  const address = Number(sub.routerIp);
+  return Number.isInteger(address) && address >= 0 && address <= (upstream.networkType === 'mstp' ? (upstream.mstpMaxMaster ?? 127) : 255);
+};
 
 // Wizard setup properties
 const showWizard = ref(false);
@@ -449,7 +471,7 @@ watch(splitHorizon, (newVal) => {
 
 const cidrOptions = Array.from({ length: 15 }, (_, i) => 16 + i); // /16 to /30
 
-const addSubnet = () => {
+const addNetwork = (networkType: 'bacnet-ip' | 'mstp' | 'arcnet') => {
   const newId = `sub-${Date.now()}`;
   let maxThirdOctet = 0;
   subnets.value.forEach(s => {
@@ -459,9 +481,11 @@ const addSubnet = () => {
     }
   });
   const nextIp = `192.168.${maxThirdOctet + 1}.0`;
+  const serialCount = subnets.value.filter(item => item.networkType === 'mstp' || item.networkType === 'arcnet').length;
+  const upstream = ipSubnets.value[0];
   subnets.value.push({
     id: newId,
-    name: `New Subnet ${subnets.value.length + 1}`,
+    name: networkType === 'bacnet-ip' ? `New IP Subnet ${ipSubnets.value.length + 1}` : networkType === 'mstp' ? `New MS/TP Segment ${serialCount + 1}` : `New ARCNET Segment ${serialCount + 1}`,
     ip: nextIp,
     cidr: 24,
     gatewayOffset: 1,
@@ -473,12 +497,16 @@ const addSubnet = () => {
     bmsRole: 'none',
     fdrTargetSubnetId: '',
     plannedDevices: 0,
-    routeTargets: [], networkType: 'bacnet-ip', bacnetNetworkNumber: '', mstpBaudRate: 38400, mstpMaxMaster: 127, arcnetDataRate: 2500
+    routeTargets: [], networkType, bacnetNetworkNumber: networkType === 'bacnet-ip' ? '' : 2000 + serialCount + 1, mstpBaudRate: 38400, mstpMaxMaster: 127, arcnetDataRate: 2500,
+    upstreamIpSubnetId: networkType === 'bacnet-ip' ? '' : upstream?.id || '', routerName: '', routerIp: ''
   });
 };
 const handleNetworkTypeChange = (sub: PlannerSubnet) => {
   normalizeNetwork(sub);
-  if (!isIpNetwork(sub)) { sub.bbmdEnabled = false; sub.bmsPlaced = false; sub.bmsRole = 'none'; }
+  if (!isIpNetwork(sub)) {
+    sub.bbmdEnabled = false; sub.bmsPlaced = false; sub.bmsRole = 'none';
+    sub.upstreamIpSubnetId ||= ipSubnets.value.find(item => item.id !== sub.id)?.id || '';
+  }
 };
 
 const deleteSubnet = (id: string) => {
@@ -586,6 +614,10 @@ const toggleBmsPlaced = (targetSub: PlannerSubnet) => {
   });
   targetSub.bmsPlaced = newVal;
 };
+const handleBbmdToggle = (sub: PlannerSubnet, enabled: boolean) => {
+  sub.bbmdEnabled = enabled;
+  if (!enabled && sub.bmsRole === 'bbmd') sub.bmsRole = 'none';
+};
 
 // Global network validation checks
 interface ValidationAlert {
@@ -603,6 +635,10 @@ const validationAlerts = computed<ValidationAlert[]>(() => {
     if (!isIpNetwork(s1)) {
       const number = Number(s1.bacnetNetworkNumber);
       if (!Number.isInteger(number) || number < 1 || number > 65534) alerts.push({ type: 'error', text: `Network "${s1.name}" needs a BACnet network number from 1–65534.` });
+      const upstream = subnets.value.find(item => item.id === s1.upstreamIpSubnetId && item.id !== s1.id && (isIpNetwork(item) || item.networkType === s1.networkType));
+      if (!upstream) alerts.push({ type: 'error', text: `Field bus "${s1.name}" must select an upstream BACnet/IP or same-type field network.` });
+      if (!s1.routerName?.trim()) alerts.push({ type: 'error', text: `Field bus "${s1.name}" needs the BACnet routing device name.` });
+      if (!routerAddressValid(s1, upstream)) alerts.push({ type: 'error', text: `Field bus "${s1.name}" needs a valid routing-device address on its upstream network.` });
       if (s1.networkType === 'mstp' && (s1.plannedDevices || 0) > (s1.mstpMaxMaster ?? 127) + 1) alerts.push({ type: 'error', text: `MS/TP network "${s1.name}" has more planned devices than its Max Master setting permits.` });
       if (s1.networkType === 'arcnet' && (s1.plannedDevices || 0) > 256) alerts.push({ type: 'error', text: `ARCNET network "${s1.name}" exceeds the 256-node address space.` });
       continue;
@@ -684,7 +720,7 @@ const bmsStatus = computed(() => {
     return `Multiple BMS servers placed (${placedList.map(s => s.name).join(', ')}). Ensure only one master server exists.`;
   }
   const bmsSub = placedList[0];
-  const bmsIp = getOffsetIp(bmsSub.ip, bmsSub.cidr, 20);
+  const bmsIp = getOffsetIp(bmsSub.ip, bmsSub.cidr, getBmsHostOffset(bmsSub));
 
   if (bmsSub.bmsRole === 'bbmd') {
     return `BMS Server placed on "${bmsSub.name}" at IP ${bmsIp}. Acting as Local BBMD.`;
@@ -745,5 +781,9 @@ const sheetStructureData = computed(() => {
 // Trigger Excel download
 const exportXlsx = () => {
   exportPlannerXlsx(subnets.value, splitHorizon.value);
+};
+const visualizePlan = () => {
+  localStorage.setItem('aceiot-network-diagram-v1', JSON.stringify(createDiagramProjectFromPlan(subnets.value)));
+  window.dispatchEvent(new CustomEvent('ace-open-planned-diagram'));
 };
 </script>

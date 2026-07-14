@@ -20,10 +20,17 @@ export interface PlannerSubnet {
   mstpBaudRate?: number;
   mstpMaxMaster?: number;
   arcnetDataRate?: number;
+  upstreamIpSubnetId?: string;
+  routerName?: string;
+  routerIp?: string;
 }
 
 export function isIpNetwork(subnet: PlannerSubnet): boolean {
   return !subnet.networkType || subnet.networkType === 'bacnet-ip';
+}
+
+export function getBmsHostOffset(subnet: PlannerSubnet): number {
+  return subnet.bmsRole === 'bbmd' && subnet.bbmdEnabled ? subnet.bbmdOffset : 20;
 }
 
 export interface PlannerState {

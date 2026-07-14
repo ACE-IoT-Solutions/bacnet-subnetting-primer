@@ -1,4 +1,4 @@
-import { PlannerSubnet, isIpNetwork } from './planner';
+import { PlannerSubnet, getBmsHostOffset, isIpNetwork } from './planner';
 import { getSubnetDetails, getOffsetIp, longToIp } from './subnet';
 
 // Style Constants matching ACE IoT Brand Colors (Charcoal background, white text, lime highlights)
@@ -188,8 +188,12 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
       const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
 
       let bmsRole = "None";
-      if (sub.bmsPlaced) {
-        if (sub.bmsRole === 'bbmd') bmsRole = "Local BBMD";
+      if (!ipNetwork) {
+        const upstream = subnets.find(item => item.id === sub.upstreamIpSubnetId);
+        bmsRole = `Routed by ${sub.routerName || 'Not set'} (${sub.routerIp || 'address not set'}) via ${upstream?.name || 'upstream not set'}`;
+      }
+      else if (sub.bmsPlaced) {
+        if (sub.bmsRole === 'bbmd') bmsRole = `Local BBMD at ${getOffsetIp(sub.ip, sub.cidr, getBmsHostOffset(sub))}`;
         else if (sub.bmsRole === 'fdr') {
           const targetSub = subnets.find(s => s.id === sub.fdrTargetSubnetId);
           bmsRole = `FDR (Registered to BBMD on ${targetSub ? targetSub.name : 'Unknown'})`;
@@ -337,7 +341,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
       const subnetRows: RowCell[][] = [];
       const gatewayIp = getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset);
       const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
-      const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : "None";
+      const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, getBmsHostOffset(sub)) : "None";
 
       subnetRows.push([makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", ""]);
       subnetRows.push([makeCell(`  Network Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
@@ -358,10 +362,10 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
       ] : [
         ["Datalink Type", sub.networkType === 'mstp' ? 'BACnet MS/TP' : 'BACnet ARCNET'],
         ["BACnet Network Number", sub.bacnetNetworkNumber || 'Not set'],
-        [sub.networkType === 'mstp' ? "Baud Rate" : "Data Rate", sub.networkType === 'mstp' ? `${sub.mstpBaudRate || 38400} baud` : `${sub.arcnetDataRate || 2500} kbps`],
-        [sub.networkType === 'mstp' ? "Max Master" : "Node Address Range", sub.networkType === 'mstp' ? (sub.mstpMaxMaster ?? 127) : '0–255'],
-        ["Planned Devices", sub.plannedDevices || 0],
-        ["BBMD", "Not applicable"]
+        ["Upstream Routed Network", subnets.find(item => item.id === sub.upstreamIpSubnetId)?.name || 'Not set'],
+        ["Routing Device", `${sub.routerName || 'Not set'} · ${sub.routerIp || 'address not set'}`],
+        [sub.networkType === 'mstp' ? "Baud / Max Master" : "Data Rate", sub.networkType === 'mstp' ? `${sub.mstpBaudRate || 38400} baud · Max Master ${sub.mstpMaxMaster ?? 127}` : `${sub.arcnetDataRate || 2500} kbps`],
+        ["Address Plan", `${sub.networkType === 'mstp' ? `MAC 0–${sub.mstpMaxMaster ?? 127}` : 'Node 0–255'} · ${sub.plannedDevices || 0} planned`]
       ];
 
       const allowedTargets = sub.routeTargets || [];
@@ -440,7 +444,10 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
             let usage = "Available";
             let cellStyle: keyof typeof STYLES = (offset % 2 === 0) ? "dataCell" : "dataCellAlt";
 
-            if (currentIp === gatewayIp) {
+            if (sub.bmsPlaced && sub.bmsRole === 'bbmd' && currentIp === bbmdIp) {
+              usage = "BMS Server / BBMD Router Node";
+              cellStyle = "bmsReservation";
+            } else if (currentIp === gatewayIp) {
               usage = "Default Gateway";
               cellStyle = "systemReservation";
             } else if (currentIp === bbmdIp) {

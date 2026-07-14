@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createDefaultProject, createDeviceAddress, createNic, createSubnet, createTestPath, deviceAddressState,
+  createDefaultProject, createDevice, createDeviceAddress, createDiagramProjectFromPlan, createNic, createSubnet, createTestPath, deviceAddressState,
   getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, normalizeDiagramProject, type DiagramDevice, type DiagramProject
 } from './network-diagram';
 
@@ -117,5 +117,49 @@ describe('network diagram validation', () => {
     mstp.devices[0].nics[0].addresses[0].ip = '255';
     mstp.devices[1].nics[0].addresses[0].ip = '256';
     expect(getDiagramDiagnostics(project).some(item => item.message.includes('invalid ARCNET node'))).toBe(true);
+  });
+
+  it('requires field buses to be reached through an IP-side router', () => {
+    const project = createDefaultProject();
+    const fieldBus = createSubnet(2);
+    fieldBus.networkType = 'mstp';
+    fieldBus.bacnetNetworkNumber = '2001';
+    project.subnets.push(fieldBus);
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('upstream BACnet/IP'))).toBe(true);
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('BACnet device on the upstream'))).toBe(true);
+
+    const router = project.subnets[0].devices[0];
+    fieldBus.upstreamSubnetId = project.subnets[0].id;
+    fieldBus.routerId = router.id;
+    expect(getDiagramDiagnostics(project)).toEqual([]);
+  });
+
+  it('supports a same-datalink MS/TP router while rejecting cross-type device addresses', () => {
+    const project = createDefaultProject();
+    const ipRouter = project.subnets[0].devices[0];
+    const upstream = createSubnet(2);
+    upstream.networkType = 'mstp'; upstream.bacnetNetworkNumber = '2001'; upstream.upstreamSubnetId = project.subnets[0].id; upstream.routerId = ipRouter.id;
+    const mstpRouter = createDevice(1, upstream.id);
+    mstpRouter.name = 'MS/TP Router'; mstpRouter.nics[0].addresses[0].ip = '10'; upstream.devices.push(mstpRouter);
+    const downstream = createSubnet(3);
+    downstream.networkType = 'mstp'; downstream.bacnetNetworkNumber = '2002'; downstream.upstreamSubnetId = upstream.id; downstream.routerId = mstpRouter.id;
+    project.subnets.push(upstream, downstream);
+    expect(getDiagramDiagnostics(project)).toEqual([]);
+
+    mstpRouter.nics[0].addresses[0].subnetId = project.subnets[0].id;
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('different datalink type'))).toBe(true);
+  });
+
+  it('turns a planner field bus into a network-only routed diagram', () => {
+    const base = { gatewayOffset: 1, vlan: 10, port: 47808, bbmdEnabled: false, bbmdOffset: 10, bmsPlaced: false, bmsRole: 'none' as const, fdrTargetSubnetId: '' };
+    const diagram = createDiagramProjectFromPlan([
+      { ...base, id: 'ip', name: 'IP LAN', ip: '192.168.10.0', cidr: 24, networkType: 'bacnet-ip' },
+      { ...base, id: 'mstp', name: 'VAV Trunk', ip: '', cidr: 24, networkType: 'mstp', bacnetNetworkNumber: 2001, upstreamIpSubnetId: 'ip', routerName: 'VAV Router', routerIp: '192.168.10.20' }
+    ]);
+    expect(diagram.viewMode).toBe('networks');
+    expect(diagram.subnets[1].upstreamSubnetId).toBe(diagram.subnets[0].id);
+    expect(diagram.subnets[0].devices[0].requiredForRouting).toBe(true);
+    expect(diagram.subnets[1].routerId).toBe(diagram.subnets[0].devices[0].id);
+    expect(getDiagramDiagnostics(diagram)).toEqual([]);
   });
 });

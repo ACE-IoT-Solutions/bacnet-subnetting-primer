@@ -1,4 +1,5 @@
 import { getSubnetDetails, ipToLong } from './subnet';
+import type { PlannerSubnet } from './planner';
 
 export type DeviceKind = 'controller' | 'workstation' | 'server' | 'sensor' | 'other';
 export type InfrastructureKind = 'router' | 'switch' | 'firewall' | 'bbmd' | 'gateway';
@@ -28,6 +29,7 @@ export interface DiagramDevice {
   /** Legacy fields retained only while importing version 1 projects. */
   ip?: string;
   additionalInterfaces?: DiagramDeviceAddress[];
+  requiredForRouting?: boolean;
 }
 
 export interface DiagramSubnet {
@@ -43,6 +45,8 @@ export interface DiagramSubnet {
   mstpBaudRate?: number;
   mstpMaxMaster?: number;
   arcnetDataRate?: number;
+  upstreamSubnetId?: string;
+  routerId?: string;
 }
 
 export interface DiagramInfrastructure {
@@ -72,6 +76,7 @@ export interface DiagramProject {
   subnets: DiagramSubnet[];
   infrastructure: DiagramInfrastructure[];
   paths: DiagramTestPath[];
+  viewMode?: 'detailed' | 'networks';
 }
 
 export interface DiagramDiagnostic {
@@ -111,7 +116,9 @@ export function createSubnet(index = 1): DiagramSubnet {
     bacnetNetworkNumber: '',
     mstpBaudRate: 38400,
     mstpMaxMaster: 127,
-    arcnetDataRate: 2500
+    arcnetDataRate: 2500,
+    upstreamSubnetId: '',
+    routerId: ''
   };
 }
 
@@ -148,8 +155,49 @@ export function createDefaultProject(): DiagramProject {
     notes: '',
     subnets: [first],
     infrastructure: [],
-    paths: []
+    paths: [],
+    viewMode: 'detailed'
   };
+}
+
+export function createDiagramProjectFromPlan(plan: PlannerSubnet[]): DiagramProject {
+  const idMap = new Map(plan.map(subnet => [subnet.id, `plan-${subnet.id}`]));
+  const subnets = plan.map((source, index) => {
+    const subnet = createSubnet(index + 1);
+    subnet.id = idMap.get(source.id)!;
+    subnet.name = source.name;
+    subnet.networkType = source.networkType || 'bacnet-ip';
+    subnet.address = source.ip;
+    subnet.cidr = source.cidr;
+    subnet.vlan = source.vlan === '' ? '' : String(source.vlan);
+    subnet.bacnetNetworkNumber = source.bacnetNetworkNumber === '' ? '' : String(source.bacnetNetworkNumber ?? '');
+    subnet.mstpBaudRate = source.mstpBaudRate ?? 38400;
+    subnet.mstpMaxMaster = source.mstpMaxMaster ?? 127;
+    subnet.arcnetDataRate = source.arcnetDataRate ?? 2500;
+    subnet.upstreamSubnetId = source.upstreamIpSubnetId ? idMap.get(source.upstreamIpSubnetId) || '' : '';
+    subnet.devices = [];
+    return subnet;
+  });
+  const routerByKey = new Map<string, DiagramDevice>();
+  for (const source of plan.filter(item => item.networkType === 'mstp' || item.networkType === 'arcnet')) {
+    const segment = subnets.find(item => item.id === idMap.get(source.id));
+    const upstream = subnets.find(item => item.id === segment?.upstreamSubnetId);
+    if (!segment || !upstream || !source.routerName?.trim()) continue;
+    const key = `${upstream.id}|${source.routerName}|${source.routerIp || ''}`;
+    let router = routerByKey.get(key);
+    if (!router) {
+      router = createDevice(upstream.devices.length + 1, upstream.id);
+      router.name = source.routerName;
+      router.kind = 'controller';
+      router.notes = 'Required BACnet routing device imported from Network Planner';
+      router.requiredForRouting = true;
+      router.nics[0].addresses[0].ip = source.routerIp || '';
+      upstream.devices.push(router);
+      routerByKey.set(key, router);
+    }
+    segment.routerId = router.id;
+  }
+  return { version: 1, title: 'Planned BACnet Network Topology', notes: 'Imported from Network Planner', subnets, infrastructure: [], paths: [], viewMode: 'networks' };
 }
 
 export function subnetCidr(subnet: DiagramSubnet): string {
@@ -194,13 +242,25 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
       && (!Number.isInteger(Number(subnet.bacnetNetworkNumber)) || Number(subnet.bacnetNetworkNumber) < 1 || Number(subnet.bacnetNetworkNumber) > 65534)) {
       diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed network'} needs a BACnet network number from 1–65534.` });
     }
+    if (subnet.networkType === 'mstp' || subnet.networkType === 'arcnet') {
+      const upstream = project.subnets.find(item => item.id === subnet.upstreamSubnetId && item.id !== subnet.id
+        && ((!item.networkType || item.networkType === 'bacnet-ip') || item.networkType === subnet.networkType));
+      const router = project.subnets.flatMap(item => item.devices).find(device => device.id === subnet.routerId);
+      const routerAddress = router?.nics.flatMap(nic => nic.addresses).find(address => address.subnetId === upstream?.id);
+      if (!upstream) diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed field bus'} must select an upstream BACnet/IP or ${subnet.networkType === 'mstp' ? 'MS/TP' : 'ARCNET'} network.` });
+      if (!router) diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed field bus'} must be routed by a BACnet device on the upstream network.` });
+      else if (!routerAddress || addressState(routerAddress, upstream) !== 'valid') diagnostics.push({ level: 'error', message: `${router.name || 'Field-bus router'} needs a valid address on the selected upstream network.` });
+    }
     for (const device of subnet.devices) {
       for (const nic of device.nics) {
         for (const address of nic.addresses) {
           const addressSubnet = project.subnets.find(candidate => candidate.id === address.subnetId);
+          const ownerType = subnet.networkType || 'bacnet-ip';
+          const addressType = addressSubnet?.networkType || 'bacnet-ip';
           const state = addressState(address, addressSubnet);
           const addressName = `${device.name || 'Unnamed device'} ${nic.name || 'NIC'} ${address.label || 'address'}`;
           if (!addressSubnet) diagnostics.push({ level: 'error', message: `${addressName} is not assigned to an available subnet.` });
+          else if (ownerType !== addressType) diagnostics.push({ level: 'error', message: `${addressName} cannot use ${subnetCidr(addressSubnet)} because the device belongs to a different datalink type.` });
           else if (state === 'invalid') diagnostics.push({ level: 'error', message: `${addressName} has an invalid ${addressSubnet.networkType === 'mstp' ? 'MS/TP MAC' : addressSubnet.networkType === 'arcnet' ? 'ARCNET node' : 'IP'} address.` });
           else if (state === 'outside') diagnostics.push({ level: 'warning', message: `${addressName} (${address.ip}) is outside ${subnetCidr(addressSubnet)}.` });
           else if (state === 'valid') {
@@ -257,12 +317,15 @@ export function getWhoIsSuggestedBroadcast(project: DiagramProject, path: Diagra
 }
 
 export function normalizeDiagramProject(project: DiagramProject): DiagramProject {
+  project.viewMode ??= 'detailed';
   for (const subnet of project.subnets) {
     subnet.networkType ??= 'bacnet-ip';
     subnet.bacnetNetworkNumber ??= '';
     subnet.mstpBaudRate ??= 38400;
     subnet.mstpMaxMaster ??= 127;
     subnet.arcnetDataRate ??= 2500;
+    subnet.upstreamSubnetId ??= '';
+    subnet.routerId ??= '';
     for (const device of subnet.devices) {
       if (!Array.isArray(device.nics)) {
         const nic = createNic(subnet.id);

@@ -22,6 +22,10 @@
             <label for="diagram-title">Diagram title</label>
             <input id="diagram-title" v-model="project.title" type="text" placeholder="Network condition or site name">
           </div>
+          <div class="form-group">
+            <label for="diagram-scope">Diagram scope</label>
+            <select id="diagram-scope" v-model="project.viewMode"><option value="detailed">Detailed — all devices</option><option value="networks">Network topology — routing devices only</option></select>
+          </div>
           <div class="form-group compact-group">
             <label for="diagram-notes">Condition / troubleshooting notes</label>
             <textarea id="diagram-notes" v-model="project.notes" rows="3" placeholder="Describe symptoms, expected traffic, or the condition being illustrated."></textarea>
@@ -43,7 +47,7 @@
             <div class="form-group"><label>Name</label><input v-model="subnet.name" type="text" placeholder="Controls LAN"></div>
             <div class="form-group"><label>Datalink type</label><select v-model="subnet.networkType"><option value="bacnet-ip">BACnet/IP</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option></select></div>
           </div>
-          <div v-if="!subnet.networkType || subnet.networkType === 'bacnet-ip'" class="editor-grid two-columns">
+          <div v-if="!subnet.networkType || subnet.networkType === 'bacnet-ip'" class="editor-grid network-address-grid">
             <div class="form-group"><label>VLAN (optional)</label><input v-model="subnet.vlan" type="text" placeholder="10"></div>
             <div class="form-group">
             <label>Network address & mask</label>
@@ -56,6 +60,8 @@
             </div>
           </div>
           <div v-else class="editor-grid two-columns">
+            <div class="form-group"><label>Upstream routed network</label><select v-model="subnet.upstreamSubnetId"><option value="">Choose upstream network</option><option v-for="upstream in upstreamNetworkOptions(subnet)" :key="upstream.id" :value="upstream.id">{{ upstream.name }} — {{ subnetCidr(upstream) }}</option></select></div>
+            <div class="form-group"><label>Routing device on upstream</label><select v-model="subnet.routerId"><option value="">Choose connected device</option><option v-for="router in routingDevicesFor(subnet)" :key="router.id" :value="router.id">{{ router.name }} — {{ router.ip || 'Address not set' }}</option></select></div>
             <div class="form-group"><label>BACnet network number</label><input v-model="subnet.bacnetNetworkNumber" type="number" min="1" max="65534" placeholder="2001"></div>
             <div v-if="subnet.networkType === 'mstp'" class="form-group"><label>Baud rate</label><select v-model.number="subnet.mstpBaudRate"><option v-for="baud in mstpBaudRates" :key="baud" :value="baud">{{ baud.toLocaleString() }} baud</option></select></div>
             <div v-else class="form-group"><label>Data rate</label><select v-model.number="subnet.arcnetDataRate"><option :value="156">156.25 kbps</option><option :value="2500">2.5 Mbps</option><option :value="5000">5 Mbps</option><option :value="10000">10 Mbps</option></select></div>
@@ -87,9 +93,9 @@
               </div>
               <div v-for="(address, addressIndex) in nic.addresses" :key="address.id" class="interface-editor-row">
                 <input v-model="address.label" type="text" aria-label="Address label" :placeholder="addressIndex === 0 && nicIndex === 0 ? 'Primary' : 'Address label'">
-                <select v-model="address.subnetId" aria-label="Address subnet">
-                  <option value="">Choose subnet</option>
-                  <option v-for="optionSubnet in project.subnets" :key="optionSubnet.id" :value="optionSubnet.id">{{ optionSubnet.name }}</option>
+                <select v-model="address.subnetId" aria-label="Address network">
+                  <option value="">Choose network</option>
+                  <option v-for="optionSubnet in compatibleAddressNetworks(subnet)" :key="optionSubnet.id" :value="optionSubnet.id">{{ optionSubnet.name }}</option>
                 </select>
                 <input v-model="address.ip" type="text" :aria-label="addressFieldLabel(address)" :placeholder="addressFieldLabel(address)" :class="addressEntryClass(address)">
                 <button class="row-remove-button" type="button" :disabled="nic.addresses.length <= 1" title="Remove address" @click="removeNicAddress(nic, address.id)">×</button>
@@ -114,9 +120,9 @@
           </div>
           <div class="form-group"><label>Management / interface IP (optional)</label><input v-model="item.ip" type="text" placeholder="10.0.0.1" :class="{ 'input-invalid': item.ip && !isIpValid(item.ip) }"></div>
           <div class="form-group compact-group">
-            <label>Connected subnets</label>
+            <label>Connected BACnet/IP subnets</label>
             <div v-if="project.subnets.length" class="subnet-checkboxes">
-              <label v-for="subnet in project.subnets" :key="subnet.id" class="checkbox-chip">
+              <label v-for="subnet in ipSubnets" :key="subnet.id" class="checkbox-chip">
                 <input v-model="item.subnetIds" type="checkbox" :value="subnet.id">
                 <span :style="{ '--chip-color': subnet.color }">{{ subnet.name || 'Unnamed subnet' }}</span>
               </label>
@@ -181,13 +187,19 @@
             <defs>
               <marker id="path-arrow-success" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#14ae5c" /></marker>
               <marker id="path-arrow-failure" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#df1219" /></marker>
+              <symbol id="ace-icon-network" viewBox="0 0 24 24"><path d="M17 3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4v2h1a1 1 0 0 1 1 1h7v2h-7a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1H2v-2h7a1 1 0 0 1 1-1h1v-2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10Z" /></symbol>
+              <symbol id="ace-icon-subnet" viewBox="0 0 24 24"><path d="M23.25 12.75v-1.5h-10.5V9h2.625A1.125 1.125 0 0 0 16.5 7.875v-6A1.125 1.125 0 0 0 15.375.75h-6.75A1.125 1.125 0 0 0 7.5 1.875v6A1.125 1.125 0 0 0 8.625 9h2.625v2.25H.75v1.5H4.5V15H1.94a1.125 1.125 0 0 0-1.125 1.125v6A1.125 1.125 0 0 0 1.94 23.25h6.685A1.125 1.125 0 0 0 9.75 22.125v-6A1.125 1.125 0 0 0 8.625 15H6v-2.25h12V15h-2.625a1.125 1.125 0 0 0-1.125 1.125v6a1.125 1.125 0 0 0 1.125 1.125h6.75a1.125 1.125 0 0 0 1.125-1.125v-6A1.125 1.125 0 0 0 22.125 15H19.5v-2.25h3.75ZM9 2.25h6V7.5H9Zm-.75 19.5H2.315V16.5H8.25Zm13.5 0h-6V16.5h6Z" /></symbol>
+              <symbol id="ace-icon-device" viewBox="0 0 24 24"><path d="M13 18h1a1 1 0 0 1 1 1h7v2h-7a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1H2v-2h7a1 1 0 0 1 1-1h1v-2H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3v2Zm0-12h1V4h-1v2ZM9 4v2h2V4H9Zm0 4v2h2V8H9Zm0 4v2h2v-2H9Z" /></symbol>
+              <symbol id="ace-icon-router" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm1-7v3h2l-3 3-3-3h2v-3H5v2l-3-3 3-3v2h6V8H9l3-3 3 3h-2v3h6V9l3 3-3 3v-2h-6Z" /></symbol>
             </defs>
             <rect class="export-bg" width="100%" height="100%" rx="14" />
             <text class="export-title" x="40" y="42">{{ clipped(project.title || 'Untitled network diagram', 70) }}</text>
             <text v-if="project.notes" class="export-notes" x="40" y="67">{{ clipped(project.notes, 130) }}</text>
             <text class="layer-label" x="24" y="102">INFRASTRUCTURE</text>
-            <text class="layer-label" x="24" :y="subnetY - 10">NETWORK SEGMENTS</text>
-            <text v-if="hostNodes.length" class="layer-label" x="24" :y="hostY - 10">HOSTS</text>
+            <text class="layer-label" x="24" :y="subnetY - 10">BACNET/IP SUBNETS</text>
+            <text v-if="ipHostNodes.length" class="layer-label" x="24" :y="ipHostY - 10">IP DEVICES &amp; ROUTERS</text>
+            <text v-if="fieldSegments.length" class="layer-label" x="24" :y="fieldBusY - 10">ROUTED FIELD BUSES</text>
+            <text v-if="fieldHostNodes.length" class="layer-label" x="24" :y="fieldHostY - 10">FIELD DEVICES</text>
 
             <g v-for="(item, index) in project.infrastructure" :key="`preview-${item.id}`">
               <path v-for="subnetId in validConnections(item)" :key="`${item.id}-${subnetId}`" class="connection" :d="connectionPath(index, item.id, subnetId)" />
@@ -195,10 +207,16 @@
               <g :transform="`translate(${infrastructureX(index) - 75}, 82)`">
                 <title>{{ item.name }}{{ item.ip ? ` — ${item.ip}` : '' }}</title>
                 <rect class="infra-box" width="150" height="72" rx="10" />
-                <text class="infra-type" x="12" y="18">{{ item.kind.toUpperCase() }}</text>
+              <text class="infra-type" x="12" y="18">{{ item.kind.toUpperCase() }}</text>
+                <use :href="item.kind === 'router' || item.kind === 'gateway' ? '#ace-icon-router' : '#ace-icon-network'" class="ace-node-icon infra-node-icon" x="116" y="12" width="22" height="22" />
                 <text class="infra-name" x="12" y="39">{{ clipped(item.name || 'Unnamed', 20) }}</text>
                 <text v-if="item.ip" class="infra-ip" x="12" y="58">{{ item.ip }}</text>
               </g>
+            </g>
+
+            <g v-for="segment in fieldSegments" :key="`route-${segment.id}`">
+              <path v-if="segment.upstreamSubnetId" class="connection field-bus-route" :d="fieldBusRoutePath(segment)" />
+              <text v-if="segment.routerId" class="address-link-label" :x="networkCenter(segment.id)" :y="fieldBusY - 18" text-anchor="middle">via {{ clipped(routerName(segment.routerId), 28) }}</text>
             </g>
 
             <g v-for="link in addressLinks" :key="link.id">
@@ -208,23 +226,24 @@
               <circle class="address-endpoint" :cx="link.endX" :cy="link.endY" r="3.5" :fill="link.color" />
             </g>
 
-            <g v-for="(subnet, subnetIndex) in project.subnets" :key="`preview-${subnet.id}`" :transform="`translate(${subnetX(subnetIndex)}, ${subnetY})`">
+            <g v-for="(subnet, subnetIndex) in project.subnets" :key="`preview-${subnet.id}`" :transform="`translate(${networkX(subnet)}, ${networkY(subnet)})`">
               <title>{{ subnet.name }} — {{ subnetCidr(subnet) }}{{ subnet.vlan ? ` — VLAN ${subnet.vlan}` : '' }}</title>
               <rect class="subnet-box" :width="subnetWidth" :height="subnetHeight" rx="14" :stroke="subnet.color" />
               <rect :width="subnetWidth" height="7" rx="4" :fill="subnet.color" />
-              <text class="node-category" x="16" y="25">{{ networkTypeLabel(subnet).toUpperCase() }}</text>
-              <text class="subnet-name" x="16" y="47">{{ clipped(subnet.name || `Subnet ${subnetIndex + 1}`, 27) }}</text>
+              <use :href="(!subnet.networkType || subnet.networkType === 'bacnet-ip') ? '#ace-icon-subnet' : '#ace-icon-network'" class="ace-node-icon" x="15" y="17" width="22" height="22" :style="{ color: subnet.color }" />
+              <text class="node-category" x="44" y="25">{{ networkTypeLabel(subnet).toUpperCase() }}</text>
+              <text class="subnet-name" x="16" y="52">{{ clipped(subnet.name || `Subnet ${subnetIndex + 1}`, 27) }}</text>
               <text class="subnet-address" x="16" y="69">{{ subnetCidr(subnet) }}</text>
               <text v-if="subnet.vlan" class="subnet-meta" :x="subnetWidth - 16" y="25" text-anchor="end">VLAN {{ clipped(subnet.vlan, 8) }}</text>
               <text class="subnet-meta" :x="subnetWidth - 16" y="69" text-anchor="end">{{ subnetAddressCount(subnet.id) }} address{{ subnetAddressCount(subnet.id) === 1 ? '' : 'es' }}</text>
             </g>
 
-            <g v-for="(host, hostIndex) in hostNodes" :key="`host-${host.device.id}`" :transform="`translate(${hostX(hostIndex)}, ${hostY})`">
+            <g v-for="(host, hostIndex) in hostNodes" :key="`host-${host.device.id}`" :transform="`translate(${hostX(host, hostIndex)}, ${hostYFor(host)})`">
               <title>{{ deviceTooltip(host.device) }}</title>
               <rect class="host-box" :width="hostWidth" :height="hostHeight" rx="12" />
               <text class="node-category" x="16" y="21">HOST</text>
-              <circle class="device-icon" cx="25" cy="45" r="13" />
-              <text x="25" y="49" text-anchor="middle" font-size="12">{{ deviceSymbol(host.device.kind) }}</text>
+              <circle class="device-icon" cx="25" cy="45" r="15" />
+              <use :href="host.device.requiredForRouting ? '#ace-icon-router' : '#ace-icon-device'" class="ace-node-icon host-node-icon" x="15" y="35" width="20" height="20" />
               <text class="device-name" x="47" y="42">{{ clipped(host.device.name || 'Unnamed device', 25) }}</text>
               <text class="device-kind" x="47" y="58">{{ host.device.kind }}</text>
               <text class="host-address-summary" x="16" y="81">{{ clipped(hostAddressSummary(host.device), 35) }}</text>
@@ -258,7 +277,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import AppButton from './AppButton.vue';
 import { getSubnetDetails, ipToLong } from '../lib/subnet';
 import {
@@ -277,9 +296,11 @@ const isExportingPdf = ref(false);
 const subnetWidth = 240;
 const subnetHeight = 88;
 const subnetY = 210;
+const ipHostY = 350;
+const fieldBusY = 500;
 const hostWidth = 240;
 const hostHeight = 96;
-const hostY = 390;
+const fieldHostY = 640;
 const cidrOptions = Array.from({ length: 25 }, (_, index) => index + 8);
 const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 const deviceKindOptions: { value: DeviceKind; label: string }[] = [
@@ -290,10 +311,17 @@ const infrastructureKindOptions = [
   { value: 'router', label: 'Router' }, { value: 'switch', label: 'Switch' }, { value: 'firewall', label: 'Firewall' },
   { value: 'bbmd', label: 'BBMD' }, { value: 'gateway', label: 'Gateway' }
 ];
+interface HostNode { device: DiagramDevice; ownerSubnet: DiagramSubnet }
 
 const diagnostics = computed(() => getDiagramDiagnostics(project.value));
 const deviceCount = computed(() => project.value.subnets.reduce((total, subnet) => total + subnet.devices.length, 0));
-const hostNodes = computed(() => project.value.subnets.flatMap(ownerSubnet => ownerSubnet.devices.map(device => ({ device, ownerSubnet }))));
+const ipSubnets = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip'));
+const fieldSegments = computed(() => project.value.subnets.filter(subnet => subnet.networkType === 'mstp' || subnet.networkType === 'arcnet'));
+const hostNodes = computed(() => project.value.subnets.flatMap(ownerSubnet => ownerSubnet.devices
+  .filter(device => project.value.viewMode !== 'networks' || device.requiredForRouting || project.value.subnets.some(segment => segment.routerId === device.id))
+  .map(device => ({ device, ownerSubnet }))));
+const ipHostNodes = computed(() => hostNodes.value.filter(host => !host.ownerSubnet.networkType || host.ownerSubnet.networkType === 'bacnet-ip'));
+const fieldHostNodes = computed(() => hostNodes.value.filter(host => host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet'));
 const endpointOptions = computed(() => [
   ...project.value.infrastructure.map(item => ({ id: item.id, nodeId: item.id, label: `${item.name || 'Unnamed infrastructure'} — ${item.ip || 'IP not set'} (${item.kind})` })),
   ...hostNodes.value.flatMap(host => host.device.nics.flatMap(nic => nic.addresses.map(address => {
@@ -315,7 +343,7 @@ const legendColumns = computed(() => canvasWidth.value >= 1250 ? 2 : 1);
 const legendCardWidth = computed(() => (canvasWidth.value - 80 - (legendColumns.value - 1) * 20) / legendColumns.value);
 const legendTextLimit = computed(() => Math.max(32, Math.floor((legendCardWidth.value - 90) / 6.3)));
 const legendRows = computed(() => Math.ceil(project.value.paths.length / legendColumns.value));
-const legendStart = computed(() => hostNodes.value.length ? hostY + hostHeight + 75 + project.value.paths.length * 18 : 330);
+const legendStart = computed(() => fieldHostNodes.value.length ? fieldHostY + hostHeight + 75 + project.value.paths.length * 18 : ipHostNodes.value.length ? ipHostY + hostHeight + 75 + project.value.paths.length * 18 : 330);
 const canvasHeight = computed(() => Math.max(hostNodes.value.length ? 625 : 430, legendStart.value + legendRows.value * 124 + 42));
 
 onMounted(() => {
@@ -325,7 +353,18 @@ onMounted(() => {
     const parsed: unknown = JSON.parse(saved);
     if (isDiagramProject(parsed)) project.value = normalizeDiagramProject(parsed);
   } catch { /* Ignore incomplete browser storage. */ }
+  window.addEventListener('ace-open-planned-diagram', loadPlannedDiagram);
 });
+onUnmounted(() => window.removeEventListener('ace-open-planned-diagram', loadPlannedDiagram));
+
+function loadPlannedDiagram() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return;
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (isDiagramProject(parsed)) project.value = normalizeDiagramProject(parsed);
+  } catch { /* Ignore invalid bridge data. */ }
+}
 
 watch(project, value => localStorage.setItem(STORAGE_KEY, JSON.stringify(value)), { deep: true });
 
@@ -410,6 +449,12 @@ function subnetIsValid(subnet: DiagramSubnet) {
 }
 function isIpValid(ip: string) { return ipToLong(ip) !== null; }
 function networkTypeLabel(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' ? 'MS/TP' : subnet.networkType === 'arcnet' ? 'ARCNET' : 'BACnet/IP subnet'; }
+function normalizedNetworkType(subnet: DiagramSubnet) { return subnet.networkType || 'bacnet-ip'; }
+function compatibleAddressNetworks(owner: DiagramSubnet) { return project.value.subnets.filter(candidate => normalizedNetworkType(candidate) === normalizedNetworkType(owner)); }
+function upstreamNetworkOptions(segment: DiagramSubnet) {
+  return project.value.subnets.filter(candidate => candidate.id !== segment.id
+    && (normalizedNetworkType(candidate) === 'bacnet-ip' || normalizedNetworkType(candidate) === normalizedNetworkType(segment)));
+}
 function addressFieldLabel(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
   return subnet?.networkType === 'mstp' ? 'MS/TP MAC (0–127)' : subnet?.networkType === 'arcnet' ? 'ARCNET node (0–255)' : 'IP address';
@@ -442,9 +487,26 @@ function deviceTooltip(device: DiagramDevice) {
 }
 function clipped(value: string, length: number) { return value.length > length ? `${value.slice(0, length - 1)}…` : value; }
 function deviceSymbol(kind: DeviceKind) { return kind === 'controller' ? 'C' : kind === 'workstation' ? 'W' : kind === 'server' ? 'S' : kind === 'sensor' ? '•' : '?'; }
-function subnetX(index: number) { return canvasWidth.value * (index + 1) / (project.value.subnets.length + 1) - subnetWidth / 2; }
-function subnetCenter(id: string) { const index = project.value.subnets.findIndex(subnet => subnet.id === id); return index < 0 ? 0 : subnetX(index) + subnetWidth / 2; }
-function hostX(index: number) { return canvasWidth.value * (index + 1) / (hostNodes.value.length + 1) - hostWidth / 2; }
+function rowX(index: number, count: number) { return canvasWidth.value * (index + 1) / (count + 1) - subnetWidth / 2; }
+function networkX(subnet: DiagramSubnet) {
+  const row = subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldSegments.value : ipSubnets.value;
+  return rowX(row.findIndex(item => item.id === subnet.id), row.length);
+}
+function networkY(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldBusY : subnetY; }
+function networkCenter(id: string) { const subnet = project.value.subnets.find(item => item.id === id); return subnet ? networkX(subnet) + subnetWidth / 2 : 0; }
+function subnetCenter(id: string) { return networkCenter(id); }
+function hostRow(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostNodes.value : ipHostNodes.value; }
+function hostX(host: HostNode, fallbackIndex = 0) {
+  const row = hostRow(host);
+  const index = row.findIndex(item => item.device.id === host.device.id);
+  return canvasWidth.value * ((index < 0 ? fallbackIndex : index) + 1) / (row.length + 1) - hostWidth / 2;
+}
+function hostYFor(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostY : ipHostY; }
+function routingDevicesFor(segment: DiagramSubnet) {
+  return hostNodes.value.flatMap(host => host.device.nics.flatMap(nic => nic.addresses
+    .filter(address => address.subnetId === segment.upstreamSubnetId)
+    .map(address => ({ id: host.device.id, name: host.device.name || 'Unnamed device', ip: address.ip }))));
+}
 function infrastructureX(index: number) { return canvasWidth.value * (index + 1) / (project.value.infrastructure.length + 1); }
 function validConnections(item: DiagramInfrastructure) { return item.subnetIds.filter(id => project.value.subnets.some(subnet => subnet.id === id)); }
 function connectionPath(index: number, itemId: string, subnetId: string) {
@@ -455,22 +517,32 @@ function connectionPath(index: number, itemId: string, subnetId: string) {
   const laneY = 174 + index * 9;
   return `M ${startX} 154 L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${subnetY}`;
 }
+function fieldBusRoutePath(segment: DiagramSubnet) {
+  if (!segment.upstreamSubnetId) return '';
+  const routerHost = ipHostNodes.value.find(host => host.device.id === segment.routerId);
+  const startX = routerHost ? hostX(routerHost) + hostWidth / 2 : networkCenter(segment.upstreamSubnetId);
+  const startY = routerHost ? ipHostY + hostHeight : subnetY + subnetHeight;
+  const endX = networkCenter(segment.id);
+  const laneY = fieldBusY - 28;
+  return `M ${startX} ${startY} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${fieldBusY}`;
+}
+function routerName(id: string) { return hostNodes.value.find(host => host.device.id === id)?.device.name || 'Unassigned router'; }
 
 interface DiagramPoint { x: number; y: number }
 const addressLinks = computed(() => hostNodes.value.flatMap((host, hostIndex) => {
   const addressTotal = addressCount(host.device);
   let flatAddressIndex = 0;
   return host.device.nics.flatMap(nic => nic.addresses.flatMap(address => {
-    const targetIndex = project.value.subnets.findIndex(candidate => candidate.id === address.subnetId);
-    if (targetIndex < 0) return [];
+    const target = project.value.subnets.find(candidate => candidate.id === address.subnetId);
+    if (!target) return [];
     const offset = (flatAddressIndex++ - (addressTotal - 1) / 2) * 12;
-    const start = { x: subnetX(targetIndex) + subnetWidth / 2 + offset, y: subnetY + subnetHeight };
-    const end = { x: hostX(hostIndex) + hostWidth / 2 + offset, y: hostY };
+    const start = { x: networkX(target) + subnetWidth / 2 + offset, y: networkY(target) + subnetHeight };
+    const end = { x: hostX(host, hostIndex) + hostWidth / 2 + offset, y: hostYFor(host) };
     const midY = (start.y + end.y) / 2;
     return [{
       id: address.id,
       path: `M ${start.x} ${start.y} C ${start.x} ${midY}, ${end.x} ${midY}, ${end.x} ${end.y}`,
-      color: project.value.subnets[targetIndex].color,
+      color: target.color,
       label: `${nic.name} · ${displayAddress(address)}`,
       startX: start.x,
       startY: start.y,
@@ -490,7 +562,7 @@ function endpointPoint(endpointId: string): DiagramPoint | null {
     const addresses = allAddresses(resolved.host.device);
     const addressIndex = addresses.findIndex(address => address.id === endpointId);
     const offset = (addressIndex - (addresses.length - 1) / 2) * 12;
-    return { x: hostX(resolved.hostIndex) + hostWidth / 2 + offset, y: hostY + hostHeight };
+    return { x: hostX(resolved.host, resolved.hostIndex) + hostWidth / 2 + offset, y: hostYFor(resolved.host) + hostHeight };
   }
   return null;
 }
@@ -511,7 +583,7 @@ const pathSegments = computed(() => project.value.paths.flatMap((path, pathIndex
   const end = endpointPoint(path.hops[index + 1]);
   if (!start || !end) return [];
   const bothHosts = start.y > 300 && end.y > 300;
-  const controlY = bothHosts ? hostY + hostHeight + 38 + pathIndex * 18 : (start.y + end.y) / 2 + pathIndex * 12;
+  const controlY = bothHosts ? Math.max(start.y, end.y) + 38 + pathIndex * 18 : (start.y + end.y) / 2 + pathIndex * 12;
   return [{
     id: `${path.id}-${index}`,
     outcome: path.outcome,
@@ -567,6 +639,10 @@ function diagramFilename() {
 function serializedDiagramSvg() {
   if (!diagramSvg.value) return;
   const clone = diagramSvg.value.cloneNode(true) as SVGSVGElement;
+  const originalIcons = diagramSvg.value.querySelectorAll<SVGElement>('.ace-node-icon');
+  clone.querySelectorAll<SVGElement>('.ace-node-icon').forEach((icon, index) => {
+    icon.setAttribute('fill', getComputedStyle(originalIcons[index]).color || '#c1d301');
+  });
   clone.setAttribute('width', String(canvasWidth.value));
   clone.setAttribute('height', String(canvasHeight.value));
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
