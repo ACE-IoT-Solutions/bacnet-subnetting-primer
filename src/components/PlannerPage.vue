@@ -11,10 +11,10 @@
           <line x1="3" y1="9" x2="21" y2="9"></line>
           <line x1="3" y1="15" x2="21" y2="15"></line>
         </svg>
-        <h2 style="font-family: var(--font-heading); font-size: 1.35rem; color: #fff; margin: 0;">Multi-Subnet BACnet Network Planner</h2>
+        <h2 style="font-family: var(--font-heading); font-size: 1.35rem; color: #fff; margin: 0;">BACnet Network Planner</h2>
       </div>
       <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.55; max-width: 900px;">
-        Design complex multi-subnet BACnet systems, define communications between them, and generate structured Excel design spreadsheets. The exported spreadsheet contains a master summary sheet, a global BDT routing schedule, and pre-populated subnet device log sheets to track IP allocations, device IDs, and object counts.
+        Design BACnet/IP subnets, MS/TP trunks, and ARCNET segments, define communications between them, and generate structured Excel design spreadsheets.
       </p>
     </div>
 
@@ -25,11 +25,8 @@
       <div style="display: flex; flex-direction: column; gap: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; width: 100%;">
           <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
-            <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #fff; margin: 0;">Configured Subnets</h3>
-            <label style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; margin: 0; user-select: none;">
-              <input type="checkbox" v-model="splitHorizon" style="cursor: pointer;">
-              Split Horizon Routing Mode
-            </label>
+            <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #fff; margin: 0;">Configured Networks</h3>
+            <AceToggle v-model="splitHorizon" label="Split horizon routing" />
           </div>
           <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
             <!-- Primary Action: Add Subnet (Lime) -->
@@ -37,7 +34,7 @@
               <template #icon>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 15px; height: 15px; margin-right: 0.5rem;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               </template>
-              <span style="white-space: nowrap;">Add Subnet</span>
+              <span style="white-space: nowrap;">Add Network</span>
             </AppButton>
 
             <!-- Secondary Action: Quick Setup Wizard (Blue) -->
@@ -70,7 +67,13 @@
               </button>
             </div>
 
-            <div class="planner-card-grid">
+            <div class="form-group" style="margin: 0 0 0.8rem; max-width: 240px;">
+              <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Datalink type</label>
+              <select v-model="sub.networkType" @change="handleNetworkTypeChange(sub)" style="width: 100%; padding: 0.4rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
+                <option value="bacnet-ip">BACnet/IP</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option>
+              </select>
+            </div>
+            <div v-if="isIpNetwork(sub)" class="planner-card-grid">
               <!-- Left Column: IP Configuration -->
               <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                 <div style="display: flex; gap: 0.6rem;">
@@ -115,10 +118,7 @@
               <!-- Right Column: BACnet Configuration -->
               <div style="display: flex; flex-direction: column; gap: 0.6rem; border-left: 1px solid rgba(255, 255, 255, 0.05); padding-left: 1rem;">
                 <!-- BBMD configuration -->
-                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer; margin: 0;">
-                  <input type="checkbox" v-model="sub.bbmdEnabled">
-                  Enable BBMD Router
-                </label>
+                <AceToggle v-model="sub.bbmdEnabled" label="Enable BBMD router" />
 
                 <div v-if="sub.bbmdEnabled" style="margin-left: 1.25rem;">
                   <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">BBMD Host Offset (.{{ sub.bbmdOffset }})</label>
@@ -132,10 +132,7 @@
                     <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Route Broadcasts to BBMDs:</label>
                     <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem;">
                       <div v-for="obs in otherBbmdSubnets(sub)" :key="obs.id">
-                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0; color: var(--text-secondary);">
-                          <input type="checkbox" :checked="isRouteTarget(sub, obs.id)" @change="toggleRouteTarget(sub, obs.id)">
-                          {{ obs.name }}
-                        </label>
+                        <AceCheckbox :model-value="isRouteTarget(sub, obs.id)" :label="obs.name" @update:model-value="toggleRouteTarget(sub, obs.id)" />
                       </div>
                       <div v-if="otherBbmdSubnets(sub).length === 0" style="font-size: 0.72rem; color: var(--text-muted);">No other BBMD routers found.</div>
                     </div>
@@ -143,10 +140,7 @@
                 </div>
 
                 <!-- BMS Server Configuration -->
-                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer; margin: 0.25rem 0 0 0;">
-                  <input type="checkbox" :checked="sub.bmsPlaced" @change="toggleBmsPlaced(sub)">
-                  Host BMS Server here
-                </label>
+                <AceToggle :model-value="sub.bmsPlaced" label="Host BMS server here" @update:model-value="toggleBmsPlaced(sub)" />
 
                 <div v-if="sub.bmsPlaced" style="margin-left: 1.25rem; margin-top: 0.2rem;">
                   <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">BMS IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, 20) || 'Invalid' }}</strong> (.20)</span>
@@ -173,9 +167,23 @@
                 </div>
               </div>
             </div>
+            <div v-else class="planner-card-grid">
+              <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div class="form-group" style="margin:0;"><label>BACnet network number</label><input v-model.number="sub.bacnetNetworkNumber" type="number" min="1" max="65534" placeholder="e.g. 2001"></div>
+                <div class="form-group" style="margin:0;"><label>Planned device count</label><input v-model.number="sub.plannedDevices" type="number" min="0" :max="sub.networkType === 'mstp' ? 128 : 256"></div>
+              </div>
+              <div v-if="sub.networkType === 'mstp'" style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div class="form-group" style="margin:0;"><label>Baud rate</label><select v-model.number="sub.mstpBaudRate"><option v-for="baud in mstpBaudRates" :key="baud" :value="baud">{{ baud.toLocaleString() }} baud</option></select></div>
+                <div class="form-group" style="margin:0;"><label>Max Master</label><input v-model.number="sub.mstpMaxMaster" type="number" min="0" max="127"><span style="font-size:.72rem;color:var(--text-muted)">Valid master MAC range: 0–{{ sub.mstpMaxMaster }}</span></div>
+              </div>
+              <div v-else style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div class="form-group" style="margin:0;"><label>Data rate</label><select v-model.number="sub.arcnetDataRate"><option :value="156">156.25 kbps</option><option :value="2500">2.5 Mbps</option><option :value="5000">5 Mbps</option><option :value="10000">10 Mbps</option></select></div>
+                <span style="font-size:.78rem;color:var(--text-muted)">ARCNET node addresses are entered as 0–255 in the diagram tool.</span>
+              </div>
+            </div>
           </div>
           <div v-if="subnets.length === 0" style="text-align: center; color: var(--text-muted); padding: 2rem; background: rgba(255,255,255,0.02); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
-            No subnets added. Click "Add Subnet" to start designing.
+            No networks added. Click "Add Network" to start designing.
           </div>
         </div>
       </div>
@@ -334,11 +342,14 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { PlannerSubnet } from '../lib/planner';
 import { getSubnetDetails, getOffsetIp, ipToLong, longToIp } from '../lib/subnet';
-import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap } from '../lib/planner';
+import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, isIpNetwork } from '../lib/planner';
 import { exportPlannerXlsx } from '../lib/export-xlsx';
 import AppButton from './AppButton.vue';
+import AceCheckbox from './AceCheckbox.vue';
+import AceToggle from './AceToggle.vue';
 
 const splitHorizon = ref(false);
+const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 
 const DEFAULT_SUBNETS: PlannerSubnet[] = [
   {
@@ -391,7 +402,14 @@ const DEFAULT_SUBNETS: PlannerSubnet[] = [
   }
 ];
 
-const subnets = ref<PlannerSubnet[]>(JSON.parse(JSON.stringify(DEFAULT_SUBNETS)));
+const subnets = ref<PlannerSubnet[]>(JSON.parse(JSON.stringify(DEFAULT_SUBNETS)).map((sub: PlannerSubnet) => ({
+  ...sub, networkType: sub.networkType || 'bacnet-ip', bacnetNetworkNumber: sub.bacnetNetworkNumber ?? '',
+  mstpBaudRate: sub.mstpBaudRate ?? 38400, mstpMaxMaster: sub.mstpMaxMaster ?? 127, arcnetDataRate: sub.arcnetDataRate ?? 2500
+})));
+const normalizeNetwork = (sub: PlannerSubnet) => Object.assign(sub, {
+  networkType: sub.networkType || 'bacnet-ip', bacnetNetworkNumber: sub.bacnetNetworkNumber ?? '',
+  mstpBaudRate: sub.mstpBaudRate ?? 38400, mstpMaxMaster: sub.mstpMaxMaster ?? 127, arcnetDataRate: sub.arcnetDataRate ?? 2500
+});
 
 // Wizard setup properties
 const showWizard = ref(false);
@@ -409,7 +427,7 @@ onMounted(() => {
 
   if (savedSubnets) {
     try {
-      subnets.value = JSON.parse(savedSubnets);
+      subnets.value = JSON.parse(savedSubnets).map(normalizeNetwork);
     } catch (e) {
       console.error("Failed to parse saved subnets", e);
     }
@@ -455,8 +473,12 @@ const addSubnet = () => {
     bmsRole: 'none',
     fdrTargetSubnetId: '',
     plannedDevices: 0,
-    routeTargets: []
+    routeTargets: [], networkType: 'bacnet-ip', bacnetNetworkNumber: '', mstpBaudRate: 38400, mstpMaxMaster: 127, arcnetDataRate: 2500
   });
+};
+const handleNetworkTypeChange = (sub: PlannerSubnet) => {
+  normalizeNetwork(sub);
+  if (!isIpNetwork(sub)) { sub.bbmdEnabled = false; sub.bmsPlaced = false; sub.bmsRole = 'none'; }
 };
 
 const deleteSubnet = (id: string) => {
@@ -578,6 +600,13 @@ const validationAlerts = computed<ValidationAlert[]>(() => {
 
   for (let i = 0; i < subnets.value.length; i++) {
     const s1 = subnets.value[i];
+    if (!isIpNetwork(s1)) {
+      const number = Number(s1.bacnetNetworkNumber);
+      if (!Number.isInteger(number) || number < 1 || number > 65534) alerts.push({ type: 'error', text: `Network "${s1.name}" needs a BACnet network number from 1–65534.` });
+      if (s1.networkType === 'mstp' && (s1.plannedDevices || 0) > (s1.mstpMaxMaster ?? 127) + 1) alerts.push({ type: 'error', text: `MS/TP network "${s1.name}" has more planned devices than its Max Master setting permits.` });
+      if (s1.networkType === 'arcnet' && (s1.plannedDevices || 0) > 256) alerts.push({ type: 'error', text: `ARCNET network "${s1.name}" exceeds the 256-node address space.` });
+      continue;
+    }
     const details1 = getSubnetDetails(s1.ip, s1.cidr);
     if (!details1) continue;
 

@@ -102,4 +102,20 @@ describe('network diagram validation', () => {
     project.paths.push(path);
     expect(getDiagramDiagnostics(project).some(item => item.message.includes('source subnet broadcast'))).toBe(true);
   });
+
+  it('validates MS/TP MAC and ARCNET node addresses', () => {
+    const project = createDefaultProject();
+    const mstp = project.subnets[0];
+    mstp.networkType = 'mstp';
+    mstp.bacnetNetworkNumber = '2001';
+    mstp.mstpMaxMaster = 63;
+    mstp.devices[0].nics[0].addresses[0].ip = '63';
+    mstp.devices[1].nics[0].addresses[0].ip = '64';
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('invalid MS/TP MAC'))).toBe(true);
+
+    mstp.networkType = 'arcnet';
+    mstp.devices[0].nics[0].addresses[0].ip = '255';
+    mstp.devices[1].nics[0].addresses[0].ip = '256';
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('invalid ARCNET node'))).toBe(true);
+  });
 });

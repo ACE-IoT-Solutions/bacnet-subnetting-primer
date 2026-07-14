@@ -243,15 +243,9 @@
 
         <!-- Simulator Actions Buttons -->
         <div class="sim-controls-panel">
-          <label class="sim-checkbox-label" style="margin-bottom: 0.5rem; flex: 1 1 100%; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer;">
-            <input type="checkbox" v-model="bcastIam">
-            Send I-Am replies as Broadcasts (standard BACnet behavior)
-          </label>
+          <AceToggle v-model="bcastIam" class="sim-option-toggle" label="Send I-Am replies as broadcasts" description="Standard BACnet behavior" />
 
-          <label v-if="isRouted" class="sim-checkbox-label" style="margin-bottom: 0.5rem; flex: 1 1 100%; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer;">
-            <input type="checkbox" v-model="bbmdEnabled">
-            Enable BBMD Over Tunnel
-          </label>
+          <AceToggle v-if="isRouted" v-model="bbmdEnabled" class="sim-option-toggle" label="Enable BBMD over tunnel" />
 
            <AppButton variant="primary" :disabled="isAnimating" @click="runSimulation('bcast-a')">
             <template #icon>
@@ -284,6 +278,7 @@
 import { ref, computed, watch, inject } from 'vue';
 import TerminalLog from './TerminalLog.vue';
 import AppButton from './AppButton.vue';
+import AceToggle from './AceToggle.vue';
 import {
   ipToLong,
   longToIp,

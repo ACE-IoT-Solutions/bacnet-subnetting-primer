@@ -99,4 +99,9 @@ describe('Subnet Overlap Classification (classifyOverlap)', () => {
     expect(result?.type).toBe('warning');
     expect(result?.text).toContain('reside on separate VLANs');
   });
+
+  it('does not apply IPv4 overlap checks to MS/TP or ARCNET networks', () => {
+    const serial = { ...baseSubnetA, id: 'serial', networkType: 'mstp' as const, bacnetNetworkNumber: 2001 };
+    expect(classifyOverlap(baseSubnetA, serial)).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import { PlannerSubnet } from './planner';
+import { PlannerSubnet, isIpNetwork } from './planner';
 import { getSubnetDetails, getOffsetIp, longToIp } from './subnet';
 
 // Style Constants matching ACE IoT Brand Colors (Charcoal background, white text, lime highlights)
@@ -179,10 +179,11 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
     ];
 
     subnets.forEach((sub, offset) => {
+      const ipNetwork = isIpNetwork(sub);
       const details = getSubnetDetails(sub.ip, sub.cidr);
       const rangeStr = details ? `${details.firstUsable} - ${details.lastUsable}` : 'N/A';
       const maskStr = details ? details.mask : 'N/A';
-      const netCidr = `${sub.ip}/${sub.cidr}`;
+      const netCidr = ipNetwork ? `${sub.ip}/${sub.cidr}` : `BACnet Network ${sub.bacnetNetworkNumber || 'Not set'}`;
       const gatewayIp = getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset);
       const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
 
@@ -199,13 +200,13 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
 
       summaryRows.push([
         makeCell(sub.name, rowStyle),
-        makeCell(sub.vlan || 'None', rowStyle),
-        makeCell(sub.port || 47808, rowStyle),
+        makeCell(ipNetwork ? (sub.vlan || 'None') : (sub.networkType === 'mstp' ? 'MS/TP' : 'ARCNET'), rowStyle),
+        makeCell(ipNetwork ? (sub.port || 47808) : (sub.networkType === 'mstp' ? `${sub.mstpBaudRate || 38400} baud` : `${sub.arcnetDataRate || 2500} kbps`), rowStyle),
         makeCell(netCidr, rowStyle),
-        makeCell(maskStr, rowStyle),
-        makeCell(gatewayIp, rowStyle),
-        makeCell(rangeStr, rowStyle),
-        makeCell(bbmdIp, rowStyle),
+        makeCell(ipNetwork ? maskStr : 'N/A', rowStyle),
+        makeCell(ipNetwork ? gatewayIp : 'N/A', rowStyle),
+        makeCell(ipNetwork ? rangeStr : (sub.networkType === 'mstp' ? `MAC 0–${sub.mstpMaxMaster ?? 127}` : 'Node 0–255'), rowStyle),
+        makeCell(ipNetwork ? bbmdIp : 'N/A', rowStyle),
         makeCell(bmsRole, rowStyle)
       ]);
     });
@@ -225,7 +226,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
       "", "", "", "", ""
     ]);
 
-    const bbmds = subnets.filter(s => s.bbmdEnabled).map(s => {
+    const bbmds = subnets.filter(s => isIpNetwork(s) && s.bbmdEnabled).map(s => {
       const details = getSubnetDetails(s.ip, s.cidr);
       return {
         id: s.id,
@@ -331,6 +332,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
 
     // 2. Subnet Sheets
     subnets.forEach(sub => {
+      const ipNetwork = isIpNetwork(sub);
       const details = getSubnetDetails(sub.ip, sub.cidr);
       const subnetRows: RowCell[][] = [];
       const gatewayIp = getOffsetIp(sub.ip, sub.cidr, sub.gatewayOffset);
@@ -338,21 +340,28 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
       const bmsIp = sub.bmsPlaced ? getOffsetIp(sub.ip, sub.cidr, 20) : "None";
 
       subnetRows.push([makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", ""]);
-      subnetRows.push([makeCell(`  Subnet Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
-      subnetRows.push([makeCell(`  Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}`, "subtitle"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell(`  Network Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell(ipNetwork ? `  Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}` : `  ${sub.networkType === 'mstp' ? 'BACnet MS/TP' : 'BACnet ARCNET'} segment · BACnet network ${sub.bacnetNetworkNumber || 'not set'}`, "subtitle"), "", "", "", "", "", "", ""]);
       subnetRows.push([]); // spacer
       subnetRows.push([
         makeCell("Subnet Configuration Details", "sectionHeader"), "", "",
         makeCell(sub.bbmdEnabled ? "BBMD Broadcast Distribution Table (BDT)" : "BBMD Routing Disabled", "sectionHeader"), "", "", "", ""
       ]);
 
-      const properties = [
+      const properties = ipNetwork ? [
         ["Network IP / CIDR", `${sub.ip}/${sub.cidr}`],
         ["Subnet Mask", details ? details.mask : 'N/A'],
         ["VLAN ID", sub.vlan || 'None'],
         ["BACnet UDP Port", sub.port || 47808],
         ["Default Gateway IP", gatewayIp],
         ["BBMD IP Address", bbmdIp]
+      ] : [
+        ["Datalink Type", sub.networkType === 'mstp' ? 'BACnet MS/TP' : 'BACnet ARCNET'],
+        ["BACnet Network Number", sub.bacnetNetworkNumber || 'Not set'],
+        [sub.networkType === 'mstp' ? "Baud Rate" : "Data Rate", sub.networkType === 'mstp' ? `${sub.mstpBaudRate || 38400} baud` : `${sub.arcnetDataRate || 2500} kbps`],
+        [sub.networkType === 'mstp' ? "Max Master" : "Node Address Range", sub.networkType === 'mstp' ? (sub.mstpMaxMaster ?? 127) : '0–255'],
+        ["Planned Devices", sub.plannedDevices || 0],
+        ["BBMD", "Not applicable"]
       ];
 
       const allowedTargets = sub.routeTargets || [];
@@ -408,8 +417,8 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
 
       // Device List Table Header
       subnetRows.push([
-        makeCell("Planned IP Address", "tableHeader"),
-        makeCell("IP Assignment / Reservation", "tableHeader"),
+        makeCell(ipNetwork ? "Planned IP Address" : (sub.networkType === 'mstp' ? "MS/TP MAC" : "ARCNET Node"), "tableHeader"),
+        makeCell(ipNetwork ? "IP Assignment / Reservation" : "Address Assignment", "tableHeader"),
         makeCell("BACnet Device ID", "tableHeader"),
         makeCell("Device Name", "tableHeader"),
         makeCell("Vendor", "tableHeader"),
@@ -418,7 +427,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
         makeCell("Location / Description", "tableHeader")
       ]);
 
-      if (details) {
+      if (ipNetwork && details) {
         const plannedIps = sub.plannedDevices || details.numHosts;
         const limit = details.numHosts <= 1024 ? details.numHosts : Math.min(details.numHosts, Math.max(plannedIps, 100));
         const startLong = details.firstUsableLong;
@@ -453,6 +462,13 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
               makeCell("", cellStyle)
             ]);
           }
+        }
+      }
+      if (!ipNetwork) {
+        const limit = Math.min(sub.plannedDevices || 0, sub.networkType === 'mstp' ? (sub.mstpMaxMaster ?? 127) + 1 : 256);
+        for (let address = 0; address < limit; address++) {
+          const cellStyle = address % 2 === 0 ? "dataCell" : "dataCellAlt";
+          subnetRows.push([makeCell(address, cellStyle), makeCell("Available", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle)]);
         }
       }
 

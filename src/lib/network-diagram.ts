@@ -4,6 +4,7 @@ export type DeviceKind = 'controller' | 'workstation' | 'server' | 'sensor' | 'o
 export type InfrastructureKind = 'router' | 'switch' | 'firewall' | 'bbmd' | 'gateway';
 export type PathOutcome = 'success' | 'failure';
 export type DiagramTestType = 'ping' | 'bacnet-whois' | 'custom';
+export type DiagramNetworkType = 'bacnet-ip' | 'mstp' | 'arcnet';
 
 export interface DiagramDeviceAddress {
   id: string;
@@ -37,6 +38,11 @@ export interface DiagramSubnet {
   vlan: string;
   color: string;
   devices: DiagramDevice[];
+  networkType?: DiagramNetworkType;
+  bacnetNetworkNumber?: string;
+  mstpBaudRate?: number;
+  mstpMaxMaster?: number;
+  arcnetDataRate?: number;
 }
 
 export interface DiagramInfrastructure {
@@ -100,7 +106,12 @@ export function createSubnet(index = 1): DiagramSubnet {
     cidr: 24,
     vlan: '',
     color: SUBNET_COLORS[(index - 1) % SUBNET_COLORS.length],
-    devices: []
+    devices: [],
+    networkType: 'bacnet-ip',
+    bacnetNetworkNumber: '',
+    mstpBaudRate: 38400,
+    mstpMaxMaster: 127,
+    arcnetDataRate: 2500
   };
 }
 
@@ -142,6 +153,8 @@ export function createDefaultProject(): DiagramProject {
 }
 
 export function subnetCidr(subnet: DiagramSubnet): string {
+  if (subnet.networkType === 'mstp') return `MS/TP · Network ${subnet.bacnetNetworkNumber || 'not set'} · ${subnet.mstpBaudRate || 38400} baud`;
+  if (subnet.networkType === 'arcnet') return `ARCNET · Network ${subnet.bacnetNetworkNumber || 'not set'} · ${subnet.arcnetDataRate || 2500} kbps`;
   const details = getSubnetDetails(subnet.address, subnet.cidr);
   return details ? `${details.network}/${subnet.cidr}` : `${subnet.address}/${subnet.cidr}`;
 }
@@ -155,6 +168,14 @@ export function deviceAddressState(device: DiagramDevice, subnet: DiagramSubnet)
 export function addressState(item: DiagramDeviceAddress | undefined, subnet: DiagramSubnet | undefined): 'empty' | 'invalid' | 'outside' | 'valid' {
   if (!item?.ip.trim()) return 'empty';
   if (!subnet) return 'invalid';
+  if (subnet.networkType === 'mstp') {
+    const mac = Number(item.ip);
+    return Number.isInteger(mac) && mac >= 0 && mac <= Math.min(127, subnet.mstpMaxMaster ?? 127) ? 'valid' : 'invalid';
+  }
+  if (subnet.networkType === 'arcnet') {
+    const node = Number(item.ip);
+    return Number.isInteger(node) && node >= 0 && node <= 255 ? 'valid' : 'invalid';
+  }
   const ip = ipToLong(item.ip);
   const details = getSubnetDetails(subnet.address, subnet.cidr);
   if (ip === null || !details) return 'invalid';
@@ -166,8 +187,12 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
   const usedIps = new Map<string, string[]>();
 
   for (const subnet of project.subnets) {
-    if (!getSubnetDetails(subnet.address, subnet.cidr)) {
+    if ((!subnet.networkType || subnet.networkType === 'bacnet-ip') && !getSubnetDetails(subnet.address, subnet.cidr)) {
       diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed subnet'} has an invalid network address.` });
+    }
+    if ((subnet.networkType === 'mstp' || subnet.networkType === 'arcnet')
+      && (!Number.isInteger(Number(subnet.bacnetNetworkNumber)) || Number(subnet.bacnetNetworkNumber) < 1 || Number(subnet.bacnetNetworkNumber) > 65534)) {
+      diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed network'} needs a BACnet network number from 1–65534.` });
     }
     for (const device of subnet.devices) {
       for (const nic of device.nics) {
@@ -176,9 +201,12 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
           const state = addressState(address, addressSubnet);
           const addressName = `${device.name || 'Unnamed device'} ${nic.name || 'NIC'} ${address.label || 'address'}`;
           if (!addressSubnet) diagnostics.push({ level: 'error', message: `${addressName} is not assigned to an available subnet.` });
-          else if (state === 'invalid') diagnostics.push({ level: 'error', message: `${addressName} has an invalid IP address.` });
+          else if (state === 'invalid') diagnostics.push({ level: 'error', message: `${addressName} has an invalid ${addressSubnet.networkType === 'mstp' ? 'MS/TP MAC' : addressSubnet.networkType === 'arcnet' ? 'ARCNET node' : 'IP'} address.` });
           else if (state === 'outside') diagnostics.push({ level: 'warning', message: `${addressName} (${address.ip}) is outside ${subnetCidr(addressSubnet)}.` });
-          else if (state === 'valid') usedIps.set(address.ip.trim(), [...(usedIps.get(address.ip.trim()) ?? []), addressName]);
+          else if (state === 'valid') {
+            const key = addressSubnet.networkType === 'mstp' || addressSubnet.networkType === 'arcnet' ? `${addressSubnet.id}:${address.ip.trim()}` : address.ip.trim();
+            usedIps.set(key, [...(usedIps.get(key) ?? []), addressName]);
+          }
         }
       }
     }
@@ -192,7 +220,7 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
   }
 
   for (const [ip, names] of usedIps) {
-    if (names.length > 1) diagnostics.push({ level: 'error', message: `Duplicate IP ${ip}: ${names.join(', ')}.` });
+    if (names.length > 1) diagnostics.push({ level: 'error', message: `${ip.includes(':') ? 'Duplicate datalink address' : 'Duplicate IP'} ${ip.includes(':') ? ip.split(':').pop() : ip}: ${names.join(', ')}.` });
   }
   const endpointIds = new Set([
     ...project.infrastructure.map(item => item.id),
@@ -230,6 +258,11 @@ export function getWhoIsSuggestedBroadcast(project: DiagramProject, path: Diagra
 
 export function normalizeDiagramProject(project: DiagramProject): DiagramProject {
   for (const subnet of project.subnets) {
+    subnet.networkType ??= 'bacnet-ip';
+    subnet.bacnetNetworkNumber ??= '';
+    subnet.mstpBaudRate ??= 38400;
+    subnet.mstpMaxMaster ??= 127;
+    subnet.arcnetDataRate ??= 2500;
     for (const device of subnet.devices) {
       if (!Array.isArray(device.nics)) {
         const nic = createNic(subnet.id);

@@ -15,6 +15,15 @@ export interface PlannerSubnet {
   fdrTargetSubnetId: string;
   plannedDevices?: number;
   routeTargets?: string[];
+  networkType?: 'bacnet-ip' | 'mstp' | 'arcnet';
+  bacnetNetworkNumber?: number | '';
+  mstpBaudRate?: number;
+  mstpMaxMaster?: number;
+  arcnetDataRate?: number;
+}
+
+export function isIpNetwork(subnet: PlannerSubnet): boolean {
+  return !subnet.networkType || subnet.networkType === 'bacnet-ip';
 }
 
 export interface PlannerState {
@@ -49,7 +58,7 @@ export function findNextAvailableSubnetBlock(
 ): string | null {
   const activeRanges: { start: number; end: number }[] = [];
   subnets.forEach(s => {
-    if (s.id !== targetSub.id) {
+    if (s.id !== targetSub.id && isIpNetwork(s)) {
       const details = getSubnetDetails(s.ip, s.cidr);
       if (details) {
         activeRanges.push({ start: details.networkLong, end: details.broadcastLong });
@@ -94,6 +103,7 @@ export function classifyOverlap(
   s1: PlannerSubnet,
   s2: PlannerSubnet
 ): { type: 'error' | 'warning'; text: string } | null {
+  if (!isIpNetwork(s1) || !isIpNetwork(s2)) return null;
   const details1 = getSubnetDetails(s1.ip, s1.cidr);
   const details2 = getSubnetDetails(s2.ip, s2.cidr);
   if (!details1 || !details2) return null;

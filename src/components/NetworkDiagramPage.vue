@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">COMMUNICATE THE CONDITION</p>
         <h2>Network Diagram Builder</h2>
-        <p>Document the subnets, field devices, and IT infrastructure involved in a network condition. The diagram updates as you edit it.</p>
+        <p>Document BACnet/IP subnets, MS/TP trunks, ARCNET segments, field devices, and infrastructure. The diagram updates as you edit it.</p>
       </div>
       <div class="diagram-actions">
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
@@ -41,9 +41,11 @@
           </div>
           <div class="editor-grid two-columns">
             <div class="form-group"><label>Name</label><input v-model="subnet.name" type="text" placeholder="Controls LAN"></div>
-            <div class="form-group"><label>VLAN (optional)</label><input v-model="subnet.vlan" type="text" placeholder="10"></div>
+            <div class="form-group"><label>Datalink type</label><select v-model="subnet.networkType"><option value="bacnet-ip">BACnet/IP</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option></select></div>
           </div>
-          <div class="form-group">
+          <div v-if="!subnet.networkType || subnet.networkType === 'bacnet-ip'" class="editor-grid two-columns">
+            <div class="form-group"><label>VLAN (optional)</label><input v-model="subnet.vlan" type="text" placeholder="10"></div>
+            <div class="form-group">
             <label>Network address & mask</label>
             <div class="input-row">
               <input v-model="subnet.address" type="text" placeholder="192.168.10.0" :class="{ 'input-invalid': !subnetIsValid(subnet) }">
@@ -51,6 +53,13 @@
                 <option v-for="cidr in cidrOptions" :key="cidr" :value="cidr">/{{ cidr }}</option>
               </select>
             </div>
+            </div>
+          </div>
+          <div v-else class="editor-grid two-columns">
+            <div class="form-group"><label>BACnet network number</label><input v-model="subnet.bacnetNetworkNumber" type="number" min="1" max="65534" placeholder="2001"></div>
+            <div v-if="subnet.networkType === 'mstp'" class="form-group"><label>Baud rate</label><select v-model.number="subnet.mstpBaudRate"><option v-for="baud in mstpBaudRates" :key="baud" :value="baud">{{ baud.toLocaleString() }} baud</option></select></div>
+            <div v-else class="form-group"><label>Data rate</label><select v-model.number="subnet.arcnetDataRate"><option :value="156">156.25 kbps</option><option :value="2500">2.5 Mbps</option><option :value="5000">5 Mbps</option><option :value="10000">10 Mbps</option></select></div>
+            <div v-if="subnet.networkType === 'mstp'" class="form-group"><label>Max Master</label><input v-model.number="subnet.mstpMaxMaster" type="number" min="0" max="127"></div>
           </div>
 
           <div class="device-list-header">
@@ -82,7 +91,7 @@
                   <option value="">Choose subnet</option>
                   <option v-for="optionSubnet in project.subnets" :key="optionSubnet.id" :value="optionSubnet.id">{{ optionSubnet.name }}</option>
                 </select>
-                <input v-model="address.ip" type="text" aria-label="IP address" placeholder="IP address" :class="addressEntryClass(address)">
+                <input v-model="address.ip" type="text" :aria-label="addressFieldLabel(address)" :placeholder="addressFieldLabel(address)" :class="addressEntryClass(address)">
                 <button class="row-remove-button" type="button" :disabled="nic.addresses.length <= 1" title="Remove address" @click="removeNicAddress(nic, address.id)">×</button>
               </div>
             </div>
@@ -177,7 +186,7 @@
             <text class="export-title" x="40" y="42">{{ clipped(project.title || 'Untitled network diagram', 70) }}</text>
             <text v-if="project.notes" class="export-notes" x="40" y="67">{{ clipped(project.notes, 130) }}</text>
             <text class="layer-label" x="24" y="102">INFRASTRUCTURE</text>
-            <text class="layer-label" x="24" :y="subnetY - 10">SUBNETS</text>
+            <text class="layer-label" x="24" :y="subnetY - 10">NETWORK SEGMENTS</text>
             <text v-if="hostNodes.length" class="layer-label" x="24" :y="hostY - 10">HOSTS</text>
 
             <g v-for="(item, index) in project.infrastructure" :key="`preview-${item.id}`">
@@ -203,11 +212,11 @@
               <title>{{ subnet.name }} — {{ subnetCidr(subnet) }}{{ subnet.vlan ? ` — VLAN ${subnet.vlan}` : '' }}</title>
               <rect class="subnet-box" :width="subnetWidth" :height="subnetHeight" rx="14" :stroke="subnet.color" />
               <rect :width="subnetWidth" height="7" rx="4" :fill="subnet.color" />
-              <text class="node-category" x="16" y="25">SUBNET</text>
+              <text class="node-category" x="16" y="25">{{ networkTypeLabel(subnet).toUpperCase() }}</text>
               <text class="subnet-name" x="16" y="47">{{ clipped(subnet.name || `Subnet ${subnetIndex + 1}`, 27) }}</text>
               <text class="subnet-address" x="16" y="69">{{ subnetCidr(subnet) }}</text>
               <text v-if="subnet.vlan" class="subnet-meta" :x="subnetWidth - 16" y="25" text-anchor="end">VLAN {{ clipped(subnet.vlan, 8) }}</text>
-              <text class="subnet-meta" :x="subnetWidth - 16" y="69" text-anchor="end">{{ subnetAddressCount(subnet.id) }} IP{{ subnetAddressCount(subnet.id) === 1 ? '' : 's' }}</text>
+              <text class="subnet-meta" :x="subnetWidth - 16" y="69" text-anchor="end">{{ subnetAddressCount(subnet.id) }} address{{ subnetAddressCount(subnet.id) === 1 ? '' : 'es' }}</text>
             </g>
 
             <g v-for="(host, hostIndex) in hostNodes" :key="`host-${host.device.id}`" :transform="`translate(${hostX(hostIndex)}, ${hostY})`">
@@ -220,7 +229,7 @@
               <text class="device-kind" x="47" y="58">{{ host.device.kind }}</text>
               <text class="host-address-summary" x="16" y="81">{{ clipped(hostAddressSummary(host.device), 35) }}</text>
               <rect class="host-count-badge" :x="hostWidth - 61" y="10" width="47" height="18" rx="9" />
-              <text class="host-count-text" :x="hostWidth - 37.5" y="22" text-anchor="middle">{{ host.device.nics.length }} NIC / {{ addressCount(host.device) }} IP</text>
+              <text class="host-count-text" :x="hostWidth - 37.5" y="22" text-anchor="middle">{{ host.device.nics.length }} NIC / {{ addressCount(host.device) }} addr</text>
             </g>
             <g v-for="segment in pathSegments" :key="segment.id" class="test-path-group">
               <title>{{ segment.label }}</title>
@@ -272,6 +281,7 @@ const hostWidth = 240;
 const hostHeight = 96;
 const hostY = 390;
 const cidrOptions = Array.from({ length: 25 }, (_, index) => index + 8);
+const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 const deviceKindOptions: { value: DeviceKind; label: string }[] = [
   { value: 'controller', label: 'Controller' }, { value: 'workstation', label: 'Workstation' },
   { value: 'server', label: 'Server' }, { value: 'sensor', label: 'Sensor / field device' }, { value: 'other', label: 'Other' }
@@ -291,7 +301,7 @@ const endpointOptions = computed(() => [
     return {
       id: address.id,
       nodeId: host.device.id,
-      label: `${host.device.name || 'Unnamed host'} — ${address.ip || 'IP not set'} — ${nic.name} / ${subnet?.name || 'No subnet'}`
+      label: `${host.device.name || 'Unnamed host'} — ${displayAddress(address)} — ${nic.name} / ${subnet?.name || 'No network'}`
     };
   })))
 ]);
@@ -394,8 +404,21 @@ function removeEndpointsFromPaths(endpointIds: string[]) {
   project.value.paths.forEach(path => { path.hops = path.hops.filter(endpointId => !removed.has(endpointId)); });
 }
 function resetProject() { if (window.confirm('Replace the current diagram with the starter example?')) project.value = createDefaultProject(); }
-function subnetIsValid(subnet: DiagramSubnet) { return getSubnetDetails(subnet.address, subnet.cidr) !== null; }
+function subnetIsValid(subnet: DiagramSubnet) {
+  if (subnet.networkType === 'mstp' || subnet.networkType === 'arcnet') return Number(subnet.bacnetNetworkNumber) >= 1 && Number(subnet.bacnetNetworkNumber) <= 65534;
+  return getSubnetDetails(subnet.address, subnet.cidr) !== null;
+}
 function isIpValid(ip: string) { return ipToLong(ip) !== null; }
+function networkTypeLabel(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' ? 'MS/TP' : subnet.networkType === 'arcnet' ? 'ARCNET' : 'BACnet/IP subnet'; }
+function addressFieldLabel(address: DiagramDeviceAddress) {
+  const subnet = project.value.subnets.find(item => item.id === address.subnetId);
+  return subnet?.networkType === 'mstp' ? 'MS/TP MAC (0–127)' : subnet?.networkType === 'arcnet' ? 'ARCNET node (0–255)' : 'IP address';
+}
+function displayAddress(address: DiagramDeviceAddress) {
+  const subnet = project.value.subnets.find(item => item.id === address.subnetId);
+  if (!address.ip) return subnet?.networkType === 'mstp' ? 'MAC not set' : subnet?.networkType === 'arcnet' ? 'Node not set' : 'IP not set';
+  return subnet?.networkType === 'mstp' ? `MAC ${address.ip}` : subnet?.networkType === 'arcnet' ? `Node ${address.ip}` : address.ip;
+}
 function addressEntryClass(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
   const state = addressState(address, subnet);
@@ -408,13 +431,13 @@ function hostAddressSummary(device: DiagramDevice) {
   const address = primaryAddress(device);
   if (!address) return 'No addresses configured';
   const nicName = device.nics[0]?.name || 'NIC';
-  return `${nicName}: ${address.ip || 'IP not set'}${addressCount(device) > 1 ? `  +${addressCount(device) - 1} more` : ''}`;
+  return `${nicName}: ${displayAddress(address)}${addressCount(device) > 1 ? `  +${addressCount(device) - 1} more` : ''}`;
 }
 function subnetAddressCount(subnetId: string) {
   return hostNodes.value.reduce((total, host) => total + allAddresses(host.device).filter(address => address.subnetId === subnetId).length, 0);
 }
 function deviceTooltip(device: DiagramDevice) {
-  const addresses = device.nics.flatMap(nic => nic.addresses.map(address => `${nic.name}: ${address.ip || 'IP not set'}`));
+  const addresses = device.nics.flatMap(nic => nic.addresses.map(address => `${nic.name}: ${displayAddress(address)}`));
   return `${device.name} — ${device.kind}${addresses.length ? ` — ${addresses.join(' · ')}` : ''}`;
 }
 function clipped(value: string, length: number) { return value.length > length ? `${value.slice(0, length - 1)}…` : value; }
@@ -448,7 +471,7 @@ const addressLinks = computed(() => hostNodes.value.flatMap((host, hostIndex) =>
       id: address.id,
       path: `M ${start.x} ${start.y} C ${start.x} ${midY}, ${end.x} ${midY}, ${end.x} ${end.y}`,
       color: project.value.subnets[targetIndex].color,
-      label: `${nic.name} · ${address.ip || 'IP not set'}`,
+      label: `${nic.name} · ${displayAddress(address)}`,
       startX: start.x,
       startY: start.y,
       endX: end.x,
@@ -504,7 +527,7 @@ function endpointName(id: string) {
   const infrastructure = project.value.infrastructure.find(item => item.id === id);
   if (infrastructure) return `${infrastructure.name || 'Unnamed infrastructure'} [${infrastructure.ip || 'IP not set'}]`;
   const resolved = resolveAddressEndpoint(id);
-  return resolved ? `${resolved.host.device.name || 'Unnamed host'} [${resolved.address.ip || 'IP not set'}]` : 'Missing endpoint';
+  return resolved ? `${resolved.host.device.name || 'Unnamed host'} [${displayAddress(resolved.address)}]` : 'Missing endpoint';
 }
 
 const pathLegends = computed(() => project.value.paths.map((path, index) => {
