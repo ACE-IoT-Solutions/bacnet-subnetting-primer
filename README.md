@@ -17,6 +17,7 @@ This is designed for control engineers, network integrators, and building automa
 - **Interactive Networking Primer:**
   - **Layer 2 vs Layer 3:** Compares BACnet/Ethernet (MAC-level) vs BACnet/IP (UDP-level) with an interactive encapsulation packet inspector.
   - **BBMD Tunneling Simulator:** Traces how BACnet Broadcast Management Devices encapsulate and tunnel broadcasts across IP routers.
+  - **Discovery vs. Reachability:** Demonstrates how a BBMD-forwarded I-Am can make a device visible even though later ReadProperty and other unicast services fail because the advertised address is not routable.
 
 ## Technology Stack
 

@@ -323,7 +323,7 @@
             <li><strong>Intercept:</strong> Device A broadcasts a Who-Is on Subnet 1. BBMD 1 intercepts it.</li>
             <li><strong>Tunnel:</strong> BBMD 1 wraps the broadcast inside a unicast <strong>BVLL (BACnet Virtual Link Layer)</strong> packet and tunnels it directly across the IP router to BBMD 2 on Subnet 2.</li>
             <li><strong>Re-Broadcast:</strong> BBMD 2 extracts the original Who-Is frame and broadcasts it locally on Subnet 2.</li>
-            <li><strong>Reply:</strong> Device B receives the broadcast and replies back with a unicast <strong>I-Am</strong>. Since it is unicast, it travels back through standard IP routing without needing BBMD assistance.</li>
+            <li><strong>Reply:</strong> Device B receives the Who-Is and returns an <strong>I-Am</strong>. The origin can learn about the device through the forwarded discovery exchange, but that does not by itself prove the advertised source address is reachable for later unicast services.</li>
           </ol>
         </div>
 
@@ -401,6 +401,66 @@
           <div class="bbmd-controls" style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 0.75rem; width: 100%;">
             <AppButton variant="primary" :disabled="primerAnimating" @click="runBbmdflow(false)">Simulate Without BBMD (Fails)</AppButton>
             <AppButton variant="secondary" :disabled="primerAnimating" @click="runBbmdflow(true)">Simulate With BBMD (Succeeds)</AppButton>
+          </div>
+        </div>
+
+        <div class="primer-card flex-col align-center" style="width: 100%; border-color: rgba(255, 167, 38, 0.35);">
+          <h4 class="primer-subheading" style="font-size: 0.95rem; margin-bottom: 0.5rem; text-align: center;">Discovery Succeeds, Unicast Fails</h4>
+          <p style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--text-secondary); text-align: center; max-width: 760px;">A BBMD can make a remote I-Am visible even when the originating workstation has no routed path to the device address. The device appears in discovery, but ReadProperty and other directed services still use ordinary IP unicast.</p>
+
+          <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; width: 100%;">
+            <svg ref="unroutableSvgRef" class="diagram-canvas" viewBox="0 0 760 280" width="100%">
+              <rect x="15" y="25" width="260" height="230" rx="10" fill="rgba(var(--primary-rgb), 0.02)" stroke="rgba(var(--primary-rgb), 0.2)" stroke-width="2" stroke-dasharray="4 4"></rect>
+              <text x="145" y="47" font-family="Inter" font-size="12" font-weight="600" fill="var(--primary)" text-anchor="middle">BMS LAN · 10.10.10.0/24</text>
+              <rect x="485" y="25" width="260" height="230" rx="10" fill="rgba(var(--secondary-rgb), 0.02)" stroke="rgba(var(--secondary-rgb), 0.2)" stroke-width="2" stroke-dasharray="4 4"></rect>
+              <text x="615" y="47" font-family="Inter" font-size="12" font-weight="600" fill="var(--secondary)" text-anchor="middle">OT LAN · 172.20.40.0/24</text>
+
+              <line x1="185" y1="93" x2="352" y2="136" class="wire-path" stroke="rgba(255,255,255,0.12)" stroke-width="2"></line>
+              <line x1="185" y1="203" x2="352" y2="144" class="wire-path" stroke="rgba(255,255,255,0.12)" stroke-width="2"></line>
+              <line x1="408" y1="136" x2="575" y2="93" class="wire-path" stroke="rgba(255,255,255,0.12)" stroke-width="2"></line>
+              <line x1="408" y1="144" x2="575" y2="203" class="wire-path" stroke="rgba(255,255,255,0.12)" stroke-width="2"></line>
+
+              <g class="node-group">
+                <rect x="40" y="70" width="145" height="46" rx="7" fill="#151c2e" stroke="var(--primary)" stroke-width="1.5"></rect>
+                <text x="112.5" y="90" class="node-label" font-size="11">Who-Is Origin</text>
+                <text x="112.5" y="104" class="node-ip" font-size="9">10.10.10.50</text>
+              </g>
+              <g class="node-group">
+                <rect x="40" y="180" width="145" height="46" rx="7" fill="#151c2e" stroke="var(--primary)" stroke-width="1.5"></rect>
+                <text x="112.5" y="200" class="node-label" font-size="11">BMS BBMD</text>
+                <text x="112.5" y="214" class="node-ip" font-size="9">10.10.10.10</text>
+              </g>
+              <g class="node-group">
+                <circle cx="380" cy="140" r="28" :stroke="unroutablePhase === 'failed' ? 'var(--error)' : '#475569'" stroke-width="2" fill="#1e293b"></circle>
+                <text x="380" y="137" font-family="Inter" font-size="10" fill="#fff" text-anchor="middle">IP Router</text>
+                <text x="380" y="150" font-family="Inter" font-size="8" :fill="unroutablePhase === 'failed' ? 'var(--error)' : '#94a3b8'" text-anchor="middle">NO ROUTE</text>
+              </g>
+              <g class="node-group">
+                <rect x="575" y="180" width="145" height="46" rx="7" fill="#151c2e" stroke="var(--secondary)" stroke-width="1.5"></rect>
+                <text x="647.5" y="200" class="node-label" font-size="11">OT BBMD</text>
+                <text x="647.5" y="214" class="node-ip" font-size="9">172.20.40.10</text>
+              </g>
+              <g class="node-group">
+                <rect x="575" y="70" width="145" height="46" rx="7" fill="#151c2e" :stroke="unroutablePhase === 'idle' ? '#475569' : 'var(--success)'" stroke-width="1.5"></rect>
+                <text x="647.5" y="90" class="node-label" font-size="11">Device 2001</text>
+                <text x="647.5" y="104" class="node-ip" font-size="9">172.20.40.25</text>
+              </g>
+            </svg>
+          </div>
+
+          <div class="bbmd-reachability-results">
+            <div :class="['bbmd-result-step', unroutablePhase !== 'idle' ? 'success' : 'pending']">
+              <span>1</span><div><strong>Discovery table</strong><small>{{ unroutablePhase === 'idle' ? 'Waiting for Who-Is' : 'Device 2001 discovered at 172.20.40.25' }}</small></div>
+            </div>
+            <div :class="['bbmd-result-step', unroutablePhase === 'failed' ? 'error' : 'pending']">
+              <span>2</span><div><strong>ReadProperty</strong><small>{{ unroutablePhase === 'failed' ? 'Timeout — no unicast route to 172.20.40.25' : 'Not tested' }}</small></div>
+            </div>
+          </div>
+
+          <AppButton variant="secondary" :disabled="primerAnimating" @click="runUnroutableIamFlow">Run Discovery → ReadProperty</AppButton>
+          <div class="verdict-box verdict-warning" style="width: 100%; margin-top: 1rem;">
+            <div class="verdict-header"><span>Key troubleshooting lesson</span></div>
+            <div class="verdict-body"><strong>Discovered does not mean reachable.</strong> BBMDs distribute BACnet broadcasts; they do not automatically route, proxy, or NAT subsequent unicast requests. Verify the client has a route and permitted UDP path to the exact IP address learned from the I-Am.</div>
           </div>
         </div>
       </div>
@@ -770,8 +830,10 @@ const logToConsole = inject<(text: string, type?: 'system' | 'info' | 'success' 
 
 // Simulator 1: BBMD Broadcast Simulator
 const bbmdSvgRef = ref<SVGSVGElement | null>(null);
+const unroutableSvgRef = ref<SVGSVGElement | null>(null);
 const primerAnimating = ref(false);
 const routerStroke = ref('#475569');
+const unroutablePhase = ref<'idle' | 'discovered' | 'failed'>('idle');
 
 const bbmdCoords = {
   devA: { x: 87, y: 93 },
@@ -902,6 +964,50 @@ const runBbmdflow = async (bbmdEnabled: boolean) => {
     }
   } catch (e) {
     console.error(e);
+  } finally {
+    primerAnimating.value = false;
+  }
+};
+
+const unroutableCoords = {
+  origin: { x: 112, y: 93 },
+  bbmdA: { x: 112, y: 203 },
+  router: { x: 380, y: 140 },
+  bbmdB: { x: 647, y: 203 },
+  device: { x: 647, y: 93 }
+};
+
+const runUnroutableIamFlow = async () => {
+  if (primerAnimating.value) return;
+  primerAnimating.value = true;
+  unroutablePhase.value = 'idle';
+  logToConsole(`--- Starting BBMD discovery with unreachable advertised address ---`, 'system');
+
+  try {
+    logToConsole(`[Who-Is Origin 10.10.10.50] Broadcasting Who-Is on the BMS LAN.`, 'info');
+    await animateLocalSegment(unroutableCoords.origin, unroutableCoords.bbmdA, 'Who-Is (BC)', 'primary', unroutableSvgRef.value);
+    logToConsole(`[BMS BBMD] Forwarding the discovery through its BDT tunnel to OT BBMD 172.20.40.10.`, 'success');
+    await animateLocalSegment(unroutableCoords.bbmdA, unroutableCoords.router, 'BVLL Tunnel', 'secondary', unroutableSvgRef.value);
+    await animateLocalSegment(unroutableCoords.router, unroutableCoords.bbmdB, 'BVLL Tunnel', 'secondary', unroutableSvgRef.value);
+    await animateLocalSegment(unroutableCoords.bbmdB, unroutableCoords.device, 'Who-Is (BC)', 'primary', unroutableSvgRef.value);
+
+    logToConsole(`[Device 2001] Who-Is received. Advertising I-Am from 172.20.40.25.`, 'success');
+    await animateLocalSegment(unroutableCoords.device, unroutableCoords.bbmdB, 'I-Am', 'secondary', unroutableSvgRef.value);
+    logToConsole(`[BBMD path] The I-Am is forwarded back to the BMS LAN, preserving visibility of 172.20.40.25.`, 'success');
+    await animateLocalSegment(unroutableCoords.bbmdB, unroutableCoords.router, 'Forwarded I-Am', 'secondary', unroutableSvgRef.value);
+    await animateLocalSegment(unroutableCoords.router, unroutableCoords.bbmdA, 'Forwarded I-Am', 'secondary', unroutableSvgRef.value);
+    await animateLocalSegment(unroutableCoords.bbmdA, unroutableCoords.origin, 'I-Am', 'secondary', unroutableSvgRef.value);
+    unroutablePhase.value = 'discovered';
+    logToConsole(`[Who-Is Origin] Device 2001 is now visible in the discovery table at 172.20.40.25.`, 'success');
+
+    await new Promise(resolve => setTimeout(resolve, 450));
+    logToConsole(`[Who-Is Origin] Sending ReadProperty as ordinary UDP unicast to 172.20.40.25:47808.`, 'info');
+    await animateLocalSegment(unroutableCoords.origin, unroutableCoords.router, 'ReadProperty (UC)', 'primary', unroutableSvgRef.value);
+    unroutablePhase.value = 'failed';
+    logToConsole(`[IP Router] DROP: No route or permitted unicast path from 10.10.10.0/24 to 172.20.40.25.`, 'error');
+    logToConsole(`[Who-Is Origin] ReadProperty timed out even though the device was discovered. BBMD forwarding does not proxy unicast services.`, 'error');
+  } catch (error) {
+    console.error(error);
   } finally {
     primerAnimating.value = false;
   }
