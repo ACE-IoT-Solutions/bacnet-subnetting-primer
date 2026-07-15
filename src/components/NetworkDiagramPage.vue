@@ -10,14 +10,7 @@
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
         <AppButton @click="saveJson">Save project</AppButton>
         <AppButton variant="primary" @click="saveSvg">Export SVG</AppButton>
-        <label class="pdf-theme-control">
-          <span>PDF appearance</span>
-          <select v-model="pdfTheme" aria-label="PDF appearance">
-            <option value="dark">Dark</option>
-            <option value="light">Light / print</option>
-          </select>
-        </label>
-        <AppButton :disabled="isExportingPdf" @click="savePdf">{{ isExportingPdf ? 'Building PDF…' : 'Export PDF' }}</AppButton>
+        <AppButton :disabled="isExportingPdf" @click="openPdfExportDialog">{{ isExportingPdf ? 'Building PDF…' : 'Export PDF' }}</AppButton>
         <input ref="fileInput" class="visually-hidden" type="file" accept="application/json,.json" @change="openJson">
       </div>
     </div>
@@ -303,6 +296,34 @@
         </div>
       </main>
     </div>
+
+    <dialog ref="pdfExportDialog" class="pdf-export-dialog" aria-labelledby="pdf-export-title">
+      <div class="pdf-export-dialog-header">
+        <div>
+          <p class="eyebrow">PDF EXPORT</p>
+          <h3 id="pdf-export-title">Choose an appearance</h3>
+        </div>
+        <button class="pdf-dialog-close" type="button" aria-label="Close PDF export options" @click="pdfExportDialog?.close()">×</button>
+      </div>
+      <p class="pdf-export-description">Use the screen-ready dark version, or a high-contrast light version designed to conserve ink when printed.</p>
+      <fieldset class="pdf-theme-options">
+        <legend class="visually-hidden">PDF appearance</legend>
+        <label :class="['pdf-theme-option', { selected: pdfTheme === 'light' }]">
+          <input v-model="pdfTheme" type="radio" value="light">
+          <span class="pdf-theme-swatch light" aria-hidden="true"></span>
+          <span><strong>Light / print</strong><small>White background and print-optimized contrast</small></span>
+        </label>
+        <label :class="['pdf-theme-option', { selected: pdfTheme === 'dark' }]">
+          <input v-model="pdfTheme" type="radio" value="dark">
+          <span class="pdf-theme-swatch dark" aria-hidden="true"></span>
+          <span><strong>Dark</strong><small>Matches the diagram builder preview</small></span>
+        </label>
+      </fieldset>
+      <div class="pdf-export-dialog-actions">
+        <AppButton @click="pdfExportDialog?.close()">Cancel</AppButton>
+        <AppButton variant="primary" @click="confirmPdfExport">Export PDF</AppButton>
+      </div>
+    </dialog>
   </section>
 </template>
 
@@ -325,8 +346,9 @@ const PDF_LIGHT_STYLES = `.export-bg{fill:#fff}.export-title,.infra-name,.subnet
 const project = ref<DiagramProject>(createDefaultProject());
 const fileInput = ref<HTMLInputElement | null>(null);
 const diagramSvg = ref<SVGSVGElement | null>(null);
+const pdfExportDialog = ref<HTMLDialogElement | null>(null);
 const isExportingPdf = ref(false);
-const pdfTheme = ref<'dark' | 'light'>('dark');
+const pdfTheme = ref<'dark' | 'light'>('light');
 const subnetWidth = 240;
 const subnetHeight = 88;
 const subnetY = 210;
@@ -716,6 +738,13 @@ function serializedDiagramSvg(theme: 'dark' | 'light' = 'dark', branded = false)
 function saveSvg() {
   const svg = serializedDiagramSvg();
   if (svg) download(svg, 'image/svg+xml', 'svg');
+}
+function openPdfExportDialog() {
+  pdfExportDialog.value?.showModal();
+}
+function confirmPdfExport() {
+  pdfExportDialog.value?.close();
+  void savePdf();
 }
 async function savePdf() {
   const svg = serializedDiagramSvg(pdfTheme.value, true);
