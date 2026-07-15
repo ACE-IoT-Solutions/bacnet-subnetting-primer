@@ -355,6 +355,7 @@ const subnetHeight = 88;
 const subnetY = 210;
 const ipHostY = 350;
 const hostWidth = 280;
+const hostGap = 12;
 const cidrOptions = Array.from({ length: 25 }, (_, index) => index + 8);
 const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 const deviceKindOptions: { value: DeviceKind; label: string }[] = [
@@ -396,7 +397,7 @@ const endpointOptions = computed(() => [
 const canvasWidth = computed(() => Math.max(
   960,
   80 + project.value.subnets.length * 275,
-  80 + hostNodes.value.length * 315,
+  80 + Math.max(ipHostNodes.value.length, fieldHostNodes.value.length) * (hostWidth + hostGap),
   80 + project.value.infrastructure.length * 190
 ));
 const legendColumns = computed(() => canvasWidth.value >= 1250 ? 2 : 1);
@@ -569,7 +570,9 @@ function hostRow(host: HostNode) { return host.ownerSubnet.networkType === 'mstp
 function hostX(host: HostNode, fallbackIndex = 0) {
   const row = hostRow(host);
   const index = row.findIndex(item => item.device.id === host.device.id);
-  return canvasWidth.value * ((index < 0 ? fallbackIndex : index) + 1) / (row.length + 1) - hostWidth / 2;
+  const resolvedIndex = index < 0 ? fallbackIndex : index;
+  const rowWidth = row.length * hostWidth + Math.max(0, row.length - 1) * hostGap;
+  return (canvasWidth.value - rowWidth) / 2 + resolvedIndex * (hostWidth + hostGap);
 }
 function hostYFor(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostY.value : ipHostY; }
 function routingDevicesFor(segment: DiagramSubnet) {
