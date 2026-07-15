@@ -10,6 +10,13 @@
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
         <AppButton @click="saveJson">Save project</AppButton>
         <AppButton variant="primary" @click="saveSvg">Export SVG</AppButton>
+        <label class="pdf-theme-control">
+          <span>PDF appearance</span>
+          <select v-model="pdfTheme" aria-label="PDF appearance">
+            <option value="dark">Dark</option>
+            <option value="light">Light / print</option>
+          </select>
+        </label>
         <AppButton :disabled="isExportingPdf" @click="savePdf">{{ isExportingPdf ? 'Building PDF…' : 'Export PDF' }}</AppButton>
         <input ref="fileInput" class="visually-hidden" type="file" accept="application/json,.json" @change="openJson">
       </div>
@@ -248,7 +255,7 @@
             <g v-for="(subnet, subnetIndex) in project.subnets" :key="`preview-${subnet.id}`" :transform="`translate(${networkX(subnet)}, ${networkY(subnet)})`">
               <title>{{ subnet.name }} — {{ subnetCidr(subnet) }}{{ subnet.vlan ? ` — VLAN ${subnet.vlan}` : '' }}</title>
               <rect class="subnet-box" :width="subnetWidth" :height="subnetHeight" rx="14" :stroke="subnet.color" />
-              <rect :width="subnetWidth" height="7" rx="4" :fill="subnet.color" />
+              <rect x="2" y="2" :width="subnetWidth - 4" height="6" rx="3" :fill="subnet.color" />
               <use :href="(!subnet.networkType || subnet.networkType === 'bacnet-ip') ? '#ace-icon-subnet' : '#ace-icon-network'" class="ace-node-icon" x="15" y="17" width="22" height="22" :style="{ color: subnet.color }" />
               <text class="node-category" x="44" y="25">{{ networkTypeLabel(subnet).toUpperCase() }}</text>
               <text class="subnet-name" x="16" y="52">{{ clipped(subnet.name || `Subnet ${subnetIndex + 1}`, 27) }}</text>
@@ -291,7 +298,7 @@
                 </g>
               </g>
             </g>
-            <text class="footer-label" x="40" :y="canvasHeight - 22">Generated with Ace IoT BACnet Network Calculator</text>
+            <text class="footer-label export-footer" x="40" :y="canvasHeight - 22">Made with https://ace-iot-solutions.github.io/bacnet-subnetting-primer/</text>
           </svg>
         </div>
       </main>
@@ -312,11 +319,14 @@ import {
 } from '../lib/network-diagram';
 
 const STORAGE_KEY = 'aceiot-network-diagram-v1';
+const TOOL_URL = 'https://ace-iot-solutions.github.io/bacnet-subnetting-primer/';
 const SVG_EXPORT_STYLES = `.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2;stroke-linejoin:round}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2}.address-endpoint{stroke:#121212;stroke-width:1}.test-path{fill:none;stroke-width:2.75;opacity:.78}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}`;
+const PDF_LIGHT_STYLES = `.export-bg{fill:#fff}.export-title,.infra-name,.subnet-name,.device-name,.path-legend-title{fill:#0f172a}.export-notes,.infra-ip,.subnet-meta,.device-kind,.host-address-label,.layer-label,.node-category,.path-route-label,.footer-label{fill:#475569}.connection{stroke:#64748b;stroke-width:2.25}.connection-dot{fill:#475569}.infra-box{fill:#fff;stroke:#0369a1;stroke-width:2.25}.infra-type{fill:#075985}.subnet-box{fill:#fff;stroke-width:2.25}.subnet-address,.host-address-summary,.path-route-text{fill:#0f172a}.host-box{fill:#fff;stroke:#64748b;stroke-width:1.75}.device-icon{fill:#e2e8f0;stroke:#cbd5e1}.ace-node-icon{fill:#0f766e}.address-endpoint{stroke:#fff}.path-legend-bg{fill:#fff;stroke:#64748b}.path-result-badge.success{fill:#dcfce7}.path-result-badge.failure{fill:#fee2e2}.path-result-text.success{fill:#166534}.path-result-text.failure{fill:#991b1b}.layer-label{font-size:9px;fill:#475569}.node-category{font-size:9.5px;fill:#475569}.infra-type{font-size:10.5px}.infra-name{font-size:13.5px}.infra-ip{font-size:11.5px}.subnet-name{font-size:15.5px}.subnet-address,.subnet-meta{font-size:11.5px}.device-name{font-size:13px}.device-kind{font-size:9.5px}.host-address-label{font-size:9px}.host-address-summary{font-size:11px}.host-count-text{font-size:7.5px}.path-route-label{font-size:9px}.path-route-text{font-size:10.5px}.footer-label{font-size:10.5px;fill:#334155}.ace-wordmark{fill:#0f172a}.solutions-wordmark{fill:#475569}`;
 const project = ref<DiagramProject>(createDefaultProject());
 const fileInput = ref<HTMLInputElement | null>(null);
 const diagramSvg = ref<SVGSVGElement | null>(null);
 const isExportingPdf = ref(false);
+const pdfTheme = ref<'dark' | 'light'>('dark');
 const subnetWidth = 240;
 const subnetHeight = 88;
 const subnetY = 210;
@@ -670,7 +680,7 @@ function saveJson() { download(JSON.stringify(project.value, null, 2), 'applicat
 function diagramFilename() {
   return (project.value.title || 'network-diagram').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'network-diagram';
 }
-function serializedDiagramSvg() {
+function serializedDiagramSvg(theme: 'dark' | 'light' = 'dark', branded = false) {
   if (!diagramSvg.value) return;
   const clone = diagramSvg.value.cloneNode(true) as SVGSVGElement;
   const originalIcons = diagramSvg.value.querySelectorAll<SVGElement>('.ace-node-icon');
@@ -680,8 +690,27 @@ function serializedDiagramSvg() {
   clone.setAttribute('width', String(canvasWidth.value));
   clone.setAttribute('height', String(canvasHeight.value));
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-  style.textContent = SVG_EXPORT_STYLES;
+  style.textContent = `${SVG_EXPORT_STYLES}${theme === 'light' ? PDF_LIGHT_STYLES : ''}`;
   clone.prepend(style);
+  if (branded) {
+    const appLogo = document.querySelector<SVGSVGElement>('.logo-icon-svg');
+    if (appLogo) {
+      const logo = appLogo.cloneNode(true) as SVGSVGElement;
+      logo.removeAttribute('style');
+      logo.setAttribute('class', 'export-ace-logo');
+      logo.setAttribute('x', '36');
+      logo.setAttribute('y', '15');
+      logo.setAttribute('width', '170');
+      logo.setAttribute('height', '47');
+      clone.querySelector('.export-bg')?.after(logo);
+      const title = clone.querySelector('.export-title');
+      const notes = clone.querySelector('.export-notes');
+      title?.setAttribute('x', '230');
+      title?.setAttribute('y', '37');
+      notes?.setAttribute('x', '230');
+      notes?.setAttribute('y', '59');
+    }
+  }
   return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;
 }
 function saveSvg() {
@@ -689,7 +718,7 @@ function saveSvg() {
   if (svg) download(svg, 'image/svg+xml', 'svg');
 }
 async function savePdf() {
-  const svg = serializedDiagramSvg();
+  const svg = serializedDiagramSvg(pdfTheme.value, true);
   if (!svg || isExportingPdf.value) return;
   isExportingPdf.value = true;
   const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
@@ -722,7 +751,16 @@ async function savePdf() {
       compress: true,
       putOnlyUsedFonts: true
     });
+    pdf.setFillColor(pdfTheme.value === 'light' ? '#ffffff' : '#121212');
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
     pdf.addImage(canvas.toDataURL('image/png'), 'PNG', padding, padding, drawingWidth, drawingHeight, undefined, 'FAST');
+    pdf.link(
+      padding + 38 * pointScale,
+      padding + (canvasHeight.value - 36) * pointScale,
+      Math.min(360 * pointScale, drawingWidth - 38 * pointScale),
+      20 * pointScale,
+      { url: TOOL_URL }
+    );
     pdf.save(`${diagramFilename()}.pdf`);
   } catch (error) {
     console.error(error);

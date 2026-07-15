@@ -501,6 +501,8 @@ textarea {
 .eyebrow { color: var(--primary); font-family: var(--font-heading); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; margin-bottom: 0.4rem; }
 .diagram-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
 .diagram-actions .btn { min-width: auto; flex: none; white-space: nowrap; }
+.pdf-theme-control { display: grid; grid-template-columns: auto auto; align-items: center; gap: 0.45rem; color: var(--ace-text-muted); font-size: 0.72rem; font-weight: 700; }
+.pdf-theme-control select { min-height: 2.5rem; width: auto; padding: 0.45rem 2rem 0.45rem 0.75rem; background-color: var(--ace-surface); border: 1px solid var(--ace-border); border-radius: var(--ace-radius-md); color: var(--ace-text); font: inherit; }
 .diagram-workspace { display: grid; grid-template-columns: minmax(360px, 430px) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 .diagram-editor { display: flex; flex-direction: column; gap: 1rem; }
 .diagram-editor .glass-card { padding: 1.25rem; }
