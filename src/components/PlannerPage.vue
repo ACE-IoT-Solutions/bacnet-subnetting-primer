@@ -14,7 +14,7 @@
         <h2 style="font-family: var(--font-heading); font-size: 1.35rem; color: #fff; margin: 0;">BACnet Network Planner</h2>
       </div>
       <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.55; max-width: 900px;">
-        Design BACnet/IP subnets, MS/TP trunks, and ARCNET segments, define communications between them, and generate structured Excel design spreadsheets.
+        Design BACnet/IP, BACnet/SC, MS/TP, and ARCNET networks, define their infrastructure and communications paths, and generate structured design spreadsheets and diagrams.
       </p>
     </div>
 
@@ -37,6 +37,7 @@
             </AppButton>
             <AppButton variant="secondary" size="sm" @click="addNetwork('mstp')" style="flex: none; min-width: auto;">+ MS/TP segment</AppButton>
             <AppButton variant="secondary" size="sm" @click="addNetwork('arcnet')" style="flex: none; min-width: auto;">+ ARCNET segment</AppButton>
+            <AppButton variant="secondary" size="sm" @click="addNetwork('bacnet-sc')" style="flex: none; min-width: auto;">+ BACnet/SC network</AppButton>
 
             <!-- Secondary Action: Quick Setup Wizard (Blue) -->
             <AppButton variant="secondary" @click="showWizard = true" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
@@ -71,7 +72,7 @@
             <div class="form-group" style="margin: 0 0 0.8rem; max-width: 240px;">
               <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Datalink type</label>
               <select v-model="sub.networkType" @change="handleNetworkTypeChange(sub)" style="width: 100%; padding: 0.4rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
-                <option value="bacnet-ip">BACnet/IP</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option>
+                <option value="bacnet-ip">BACnet/IP</option><option value="bacnet-sc">BACnet/SC</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option>
               </select>
             </div>
             <div v-if="isIpNetwork(sub)" class="planner-card-grid">
@@ -167,6 +168,28 @@
                   </div>
                   <div v-if="otherBbmdSubnets(sub).length === 0" style="font-size: 0.72rem; color: var(--text-muted);">No other BBMD routers found.</div>
                 </div>
+              </div>
+            </div>
+            <div v-else-if="sub.networkType === 'bacnet-sc'" class="planner-card-grid">
+              <div class="standards-note" style="grid-column:1/-1"><strong>BACnet/SC topology</strong><span>The BACnet/SC annex defines TLS-secured WebSocket connections, a logical hub-and-spoke model, one active primary or failover hub connection per node, and optional direct connections for unicast. “HA hub cluster” here groups the standard’s primary and failover hub functions for planning.</span><a href="https://www.ashrae.org/file%20library/technical%20resources/standards%20and%20guidelines/standards%20addenda/135_2016_bj_20191118.pdf" target="_blank" rel="noopener">ASHRAE Addendum 135-2016bj</a></div>
+              <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div class="form-group" style="margin:0;"><label>BACnet network number</label><input v-model.number="sub.bacnetNetworkNumber" type="number" min="1" max="65534" placeholder="e.g. 3001"></div>
+                <div class="form-group" style="margin:0;"><label>Planned BACnet/SC nodes</label><input v-model.number="sub.plannedDevices" type="number" min="0"></div>
+                <div class="form-group compact-group"><label>IP underlays carrying hub connections</label><div class="subnet-checkboxes"><label v-for="underlay in ipSubnets" :key="underlay.id" class="checkbox-chip"><input v-model="sub.scUnderlaySubnetIds" type="checkbox" :value="underlay.id"><span>{{ underlay.name }}</span></label></div></div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <strong>Primary hub function</strong>
+                <div class="form-group" style="margin:0;"><label>Hub name</label><input v-model="sub.scPrimaryHubName" type="text" placeholder="Primary SC Hub"></div>
+                <div class="form-group" style="margin:0;"><label>Hub IP</label><input v-model="sub.scPrimaryHubIp" type="text" placeholder="10.20.0.10"></div>
+                <div class="form-group" style="margin:0;"><label>Hub WebSocket URI</label><input v-model="sub.scPrimaryHubUri" type="text" placeholder="wss://sc-hub.example.com"></div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:0.75rem;">
+                <AceToggle :model-value="Boolean(sub.scFailoverEnabled)" label="High-availability hub pair" description="Configure the failover hub URI required by the node failover model" @update:model-value="sub.scFailoverEnabled = $event" />
+                <template v-if="sub.scFailoverEnabled">
+                  <div class="form-group" style="margin:0;"><label>Failover hub name</label><input v-model="sub.scFailoverHubName" type="text" placeholder="Failover SC Hub"></div>
+                  <div class="form-group" style="margin:0;"><label>Failover hub IP</label><input v-model="sub.scFailoverHubIp" type="text" placeholder="10.30.0.10"></div>
+                  <div class="form-group" style="margin:0;"><label>Failover WebSocket URI</label><input v-model="sub.scFailoverHubUri" type="text" placeholder="wss://sc-hub-failover.example.com"></div>
+                </template>
               </div>
             </div>
             <div v-else class="planner-card-grid">
@@ -418,12 +441,15 @@ const subnets = ref<PlannerSubnet[]>(JSON.parse(JSON.stringify(DEFAULT_SUBNETS))
 const normalizeNetwork = (sub: PlannerSubnet) => Object.assign(sub, {
   networkType: sub.networkType || 'bacnet-ip', bacnetNetworkNumber: sub.bacnetNetworkNumber ?? '',
   mstpBaudRate: sub.mstpBaudRate ?? 38400, mstpMaxMaster: sub.mstpMaxMaster ?? 127, arcnetDataRate: sub.arcnetDataRate ?? 2500,
-  upstreamIpSubnetId: sub.upstreamIpSubnetId ?? '', routerName: sub.routerName ?? '', routerIp: sub.routerIp ?? ''
+  upstreamIpSubnetId: sub.upstreamIpSubnetId ?? '', routerName: sub.routerName ?? '', routerIp: sub.routerIp ?? '',
+  scPrimaryHubName: sub.scPrimaryHubName ?? '', scPrimaryHubIp: sub.scPrimaryHubIp ?? '', scPrimaryHubUri: sub.scPrimaryHubUri ?? '',
+  scFailoverEnabled: sub.scFailoverEnabled ?? false, scFailoverHubName: sub.scFailoverHubName ?? '', scFailoverHubIp: sub.scFailoverHubIp ?? '',
+  scFailoverHubUri: sub.scFailoverHubUri ?? '', scUnderlaySubnetIds: sub.scUnderlaySubnetIds ?? []
 });
 const ipSubnets = computed(() => subnets.value.filter(isIpNetwork));
 const upstreamNetworkOptions = (sub: PlannerSubnet) => subnets.value.filter(candidate => candidate.id !== sub.id
   && (isIpNetwork(candidate) || candidate.networkType === sub.networkType));
-const networkSummary = (sub: PlannerSubnet) => isIpNetwork(sub) ? `${sub.ip}/${sub.cidr}` : `${sub.networkType === 'mstp' ? 'MS/TP' : 'ARCNET'} network ${sub.bacnetNetworkNumber || 'not set'}`;
+const networkSummary = (sub: PlannerSubnet) => isIpNetwork(sub) ? `${sub.ip}/${sub.cidr}` : `${sub.networkType === 'mstp' ? 'MS/TP' : sub.networkType === 'arcnet' ? 'ARCNET' : 'BACnet/SC'} network ${sub.bacnetNetworkNumber || 'not set'}`;
 const upstreamFor = (sub: PlannerSubnet) => subnets.value.find(item => item.id === sub.upstreamIpSubnetId);
 const routerAddressPlaceholder = (sub: PlannerSubnet) => upstreamFor(sub)?.networkType === 'mstp' ? 'MS/TP MAC' : upstreamFor(sub)?.networkType === 'arcnet' ? 'ARCNET node' : 'e.g. 192.168.1.40';
 const routerAddressValid = (sub: PlannerSubnet, upstream: PlannerSubnet | undefined) => {
@@ -471,7 +497,7 @@ watch(splitHorizon, (newVal) => {
 
 const cidrOptions = Array.from({ length: 15 }, (_, i) => 16 + i); // /16 to /30
 
-const addNetwork = (networkType: 'bacnet-ip' | 'mstp' | 'arcnet') => {
+const addNetwork = (networkType: 'bacnet-ip' | 'bacnet-sc' | 'mstp' | 'arcnet') => {
   const newId = `sub-${Date.now()}`;
   let maxThirdOctet = 0;
   subnets.value.forEach(s => {
@@ -485,7 +511,7 @@ const addNetwork = (networkType: 'bacnet-ip' | 'mstp' | 'arcnet') => {
   const upstream = ipSubnets.value[0];
   subnets.value.push({
     id: newId,
-    name: networkType === 'bacnet-ip' ? `New IP Subnet ${ipSubnets.value.length + 1}` : networkType === 'mstp' ? `New MS/TP Segment ${serialCount + 1}` : `New ARCNET Segment ${serialCount + 1}`,
+    name: networkType === 'bacnet-ip' ? `New IP Subnet ${ipSubnets.value.length + 1}` : networkType === 'bacnet-sc' ? 'New BACnet/SC Network' : networkType === 'mstp' ? `New MS/TP Segment ${serialCount + 1}` : `New ARCNET Segment ${serialCount + 1}`,
     ip: nextIp,
     cidr: 24,
     gatewayOffset: 1,
@@ -498,12 +524,14 @@ const addNetwork = (networkType: 'bacnet-ip' | 'mstp' | 'arcnet') => {
     fdrTargetSubnetId: '',
     plannedDevices: 0,
     routeTargets: [], networkType, bacnetNetworkNumber: networkType === 'bacnet-ip' ? '' : 2000 + serialCount + 1, mstpBaudRate: 38400, mstpMaxMaster: 127, arcnetDataRate: 2500,
-    upstreamIpSubnetId: networkType === 'bacnet-ip' ? '' : upstream?.id || '', routerName: '', routerIp: ''
+    upstreamIpSubnetId: networkType === 'mstp' || networkType === 'arcnet' ? upstream?.id || '' : '', routerName: '', routerIp: '',
+    scPrimaryHubName: networkType === 'bacnet-sc' ? 'Primary SC Hub' : '', scPrimaryHubIp: '', scPrimaryHubUri: '', scFailoverEnabled: false,
+    scFailoverHubName: '', scFailoverHubIp: '', scFailoverHubUri: '', scUnderlaySubnetIds: networkType === 'bacnet-sc' && upstream ? [upstream.id] : []
   });
 };
 const handleNetworkTypeChange = (sub: PlannerSubnet) => {
   normalizeNetwork(sub);
-  if (!isIpNetwork(sub)) {
+  if (sub.networkType === 'mstp' || sub.networkType === 'arcnet') {
     sub.bbmdEnabled = false; sub.bmsPlaced = false; sub.bmsRole = 'none';
     sub.upstreamIpSubnetId ||= ipSubnets.value.find(item => item.id !== sub.id)?.id || '';
   }
@@ -632,6 +660,28 @@ const validationAlerts = computed<ValidationAlert[]>(() => {
 
   for (let i = 0; i < subnets.value.length; i++) {
     const s1 = subnets.value[i];
+    if (s1.networkType === 'bacnet-sc') {
+      const number = Number(s1.bacnetNetworkNumber);
+      if (!Number.isInteger(number) || number < 1 || number > 65534) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" needs a BACnet network number from 1–65534.` });
+      if (!s1.scUnderlaySubnetIds?.length) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" must select at least one IP underlay for node-to-hub L3 reachability.` });
+      if (!s1.scPrimaryHubName?.trim()) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" needs a primary hub name.` });
+      if (!s1.scPrimaryHubIp?.trim() || ipToLong(s1.scPrimaryHubIp) === null) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" needs a valid primary hub IP.` });
+      if (!s1.scPrimaryHubUri?.startsWith('wss://')) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" needs a primary wss:// hub URI.` });
+      if (s1.scFailoverEnabled) {
+        if (!s1.scFailoverHubIp?.trim() || ipToLong(s1.scFailoverHubIp) === null) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" needs a valid failover hub IP.` });
+        if (!s1.scFailoverHubUri?.startsWith('wss://')) alerts.push({ type: 'error', text: `BACnet/SC network "${s1.name}" needs a failover wss:// hub URI.` });
+      }
+      const underlays = (s1.scUnderlaySubnetIds ?? []).map(id => subnets.value.find(item => item.id === id)).filter((item): item is PlannerSubnet => Boolean(item && isIpNetwork(item)));
+      for (const [label, hubIp] of [['Primary', s1.scPrimaryHubIp], ['Failover', s1.scFailoverEnabled ? s1.scFailoverHubIp : '']] as const) {
+        if (!hubIp || ipToLong(hubIp) === null) continue;
+        const onUnderlay = underlays.some(underlay => {
+          const details = getSubnetDetails(underlay.ip, underlay.cidr); const value = ipToLong(hubIp);
+          return details && value !== null && value >= details.networkLong && value <= details.broadcastLong;
+        });
+        if (!onUnderlay) alerts.push({ type: 'warning', text: `${label} hub ${hubIp} is outside the selected IP underlays for "${s1.name}". Document the L3 route, return route, DNS resolution, firewall allowance, and TLS trust path.` });
+      }
+      continue;
+    }
     if (!isIpNetwork(s1)) {
       const number = Number(s1.bacnetNetworkNumber);
       if (!Number.isInteger(number) || number < 1 || number > 65534) alerts.push({ type: 'error', text: `Network "${s1.name}" needs a BACnet network number from 1–65534.` });

@@ -188,7 +188,9 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
       const bbmdIp = sub.bbmdEnabled ? getOffsetIp(sub.ip, sub.cidr, sub.bbmdOffset) : "None";
 
       let bmsRole = "None";
-      if (!ipNetwork) {
+      if (sub.networkType === 'bacnet-sc') {
+        bmsRole = sub.scFailoverEnabled ? `Primary/failover hub cluster: ${sub.scPrimaryHubName || 'not set'} / ${sub.scFailoverHubName || 'not set'}` : `Primary hub: ${sub.scPrimaryHubName || 'not set'}`;
+      } else if (!ipNetwork) {
         const upstream = subnets.find(item => item.id === sub.upstreamIpSubnetId);
         bmsRole = `Routed by ${sub.routerName || 'Not set'} (${sub.routerIp || 'address not set'}) via ${upstream?.name || 'upstream not set'}`;
       }
@@ -204,12 +206,12 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
 
       summaryRows.push([
         makeCell(sub.name, rowStyle),
-        makeCell(ipNetwork ? (sub.vlan || 'None') : (sub.networkType === 'mstp' ? 'MS/TP' : 'ARCNET'), rowStyle),
-        makeCell(ipNetwork ? (sub.port || 47808) : (sub.networkType === 'mstp' ? `${sub.mstpBaudRate || 38400} baud` : `${sub.arcnetDataRate || 2500} kbps`), rowStyle),
+        makeCell(ipNetwork ? (sub.vlan || 'None') : (sub.networkType === 'mstp' ? 'MS/TP' : sub.networkType === 'arcnet' ? 'ARCNET' : 'BACnet/SC'), rowStyle),
+        makeCell(ipNetwork ? (sub.port || 47808) : (sub.networkType === 'mstp' ? `${sub.mstpBaudRate || 38400} baud` : sub.networkType === 'arcnet' ? `${sub.arcnetDataRate || 2500} kbps` : 'TLS WebSocket'), rowStyle),
         makeCell(netCidr, rowStyle),
         makeCell(ipNetwork ? maskStr : 'N/A', rowStyle),
         makeCell(ipNetwork ? gatewayIp : 'N/A', rowStyle),
-        makeCell(ipNetwork ? rangeStr : (sub.networkType === 'mstp' ? `MAC 0–${sub.mstpMaxMaster ?? 127}` : 'Node 0–255'), rowStyle),
+        makeCell(ipNetwork ? rangeStr : (sub.networkType === 'mstp' ? `MAC 0–${sub.mstpMaxMaster ?? 127}` : sub.networkType === 'arcnet' ? 'Node 0–255' : `${sub.plannedDevices || 0} SC nodes`), rowStyle),
         makeCell(ipNetwork ? bbmdIp : 'N/A', rowStyle),
         makeCell(bmsRole, rowStyle)
       ]);
@@ -345,7 +347,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
 
       subnetRows.push([makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", ""]);
       subnetRows.push([makeCell(`  Network Device Planning Log: ${sub.name}`, "title"), "", "", "", "", "", "", ""]);
-      subnetRows.push([makeCell(ipNetwork ? `  Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}` : `  ${sub.networkType === 'mstp' ? 'BACnet MS/TP' : 'BACnet ARCNET'} segment · BACnet network ${sub.bacnetNetworkNumber || 'not set'}`, "subtitle"), "", "", "", "", "", "", ""]);
+      subnetRows.push([makeCell(ipNetwork ? `  Usable IP allocations and host device bindings for segment ${sub.ip}/${sub.cidr}` : `  ${sub.networkType === 'mstp' ? 'BACnet MS/TP' : sub.networkType === 'arcnet' ? 'BACnet ARCNET' : 'BACnet/SC'} network · BACnet network ${sub.bacnetNetworkNumber || 'not set'}`, "subtitle"), "", "", "", "", "", "", ""]);
       subnetRows.push([]); // spacer
       subnetRows.push([
         makeCell("Subnet Configuration Details", "sectionHeader"), "", "",
@@ -359,6 +361,12 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
         ["BACnet UDP Port", sub.port || 47808],
         ["Default Gateway IP", gatewayIp],
         ["BBMD IP Address", bbmdIp]
+      ] : sub.networkType === 'bacnet-sc' ? [
+        ["Datalink Type", "BACnet/SC"], ["BACnet Network Number", sub.bacnetNetworkNumber || 'Not set'],
+        ["Primary Hub", `${sub.scPrimaryHubName || 'Not set'} · ${sub.scPrimaryHubIp || 'IP not set'} · ${sub.scPrimaryHubUri || 'URI not set'}`],
+        ["Failover Hub", sub.scFailoverEnabled ? `${sub.scFailoverHubName || 'Not set'} · ${sub.scFailoverHubIp || 'IP not set'} · ${sub.scFailoverHubUri || 'URI not set'}` : 'Not configured'],
+        ["IP Underlays", (sub.scUnderlaySubnetIds || []).map(id => subnets.find(item => item.id === id)?.name || id).join(', ') || 'Not set'],
+        ["Planned Nodes", sub.plannedDevices || 0]
       ] : [
         ["Datalink Type", sub.networkType === 'mstp' ? 'BACnet MS/TP' : 'BACnet ARCNET'],
         ["BACnet Network Number", sub.bacnetNetworkNumber || 'Not set'],
@@ -421,7 +429,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
 
       // Device List Table Header
       subnetRows.push([
-        makeCell(ipNetwork ? "Planned IP Address" : (sub.networkType === 'mstp' ? "MS/TP MAC" : "ARCNET Node"), "tableHeader"),
+        makeCell(ipNetwork ? "Planned IP Address" : (sub.networkType === 'mstp' ? "MS/TP MAC" : sub.networkType === 'arcnet' ? "ARCNET Node" : "SC Node IP"), "tableHeader"),
         makeCell(ipNetwork ? "IP Assignment / Reservation" : "Address Assignment", "tableHeader"),
         makeCell("BACnet Device ID", "tableHeader"),
         makeCell("Device Name", "tableHeader"),
@@ -471,11 +479,17 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
           }
         }
       }
-      if (!ipNetwork) {
+      if (!ipNetwork && sub.networkType !== 'bacnet-sc') {
         const limit = Math.min(sub.plannedDevices || 0, sub.networkType === 'mstp' ? (sub.mstpMaxMaster ?? 127) + 1 : 256);
         for (let address = 0; address < limit; address++) {
           const cellStyle = address % 2 === 0 ? "dataCell" : "dataCellAlt";
           subnetRows.push([makeCell(address, cellStyle), makeCell("Available", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle)]);
+        }
+      }
+      if (sub.networkType === 'bacnet-sc') {
+        for (let index = 0; index < (sub.plannedDevices || 0); index++) {
+          const cellStyle = index % 2 === 0 ? "dataCell" : "dataCellAlt";
+          subnetRows.push([makeCell("", cellStyle), makeCell(`SC Node ${index + 1}`, cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("", cellStyle), makeCell("Assign primary/failover hub and verify L3/TLS path", cellStyle)]);
         }
       }
 

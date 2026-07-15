@@ -2,10 +2,10 @@ import { getSubnetDetails, ipToLong } from './subnet';
 import type { PlannerSubnet } from './planner';
 
 export type DeviceKind = 'controller' | 'workstation' | 'server' | 'sensor' | 'other';
-export type InfrastructureKind = 'router' | 'switch' | 'firewall' | 'bbmd' | 'gateway';
+export type InfrastructureKind = 'router' | 'switch' | 'firewall' | 'bbmd' | 'gateway' | 'sc-hub' | 'sc-hub-cluster';
 export type PathOutcome = 'success' | 'failure';
 export type DiagramTestType = 'ping' | 'bacnet-whois' | 'custom';
-export type DiagramNetworkType = 'bacnet-ip' | 'mstp' | 'arcnet';
+export type DiagramNetworkType = 'bacnet-ip' | 'bacnet-sc' | 'mstp' | 'arcnet';
 
 export interface DiagramDeviceAddress {
   id: string;
@@ -30,6 +30,8 @@ export interface DiagramDevice {
   ip?: string;
   additionalInterfaces?: DiagramDeviceAddress[];
   requiredForRouting?: boolean;
+  scHubId?: string;
+  scHubL3Reachable?: boolean;
 }
 
 export interface DiagramSubnet {
@@ -47,6 +49,7 @@ export interface DiagramSubnet {
   arcnetDataRate?: number;
   upstreamSubnetId?: string;
   routerId?: string;
+  scDirectConnections?: boolean;
 }
 
 export interface DiagramInfrastructure {
@@ -56,6 +59,11 @@ export interface DiagramInfrastructure {
   ip: string;
   subnetIds: string[];
   notes: string;
+  uri?: string;
+  failoverIp?: string;
+  failoverUri?: string;
+  peerInfrastructureIds?: string[];
+  underlaySubnetIds?: string[];
 }
 
 export interface DiagramTestPath {
@@ -123,7 +131,7 @@ export function createSubnet(index = 1): DiagramSubnet {
 }
 
 export function createInfrastructure(index = 1): DiagramInfrastructure {
-  return { id: createId('infra'), name: `Router ${index}`, kind: 'router', ip: '', subnetIds: [], notes: '' };
+  return { id: createId('infra'), name: `Router ${index}`, kind: 'router', ip: '', subnetIds: [], notes: '', uri: '', failoverIp: '', failoverUri: '', peerInfrastructureIds: [], underlaySubnetIds: [] };
 }
 
 export function createTestPath(endpointIds: string[] = []): DiagramTestPath {
@@ -197,10 +205,24 @@ export function createDiagramProjectFromPlan(plan: PlannerSubnet[]): DiagramProj
     }
     segment.routerId = router.id;
   }
-  return { version: 1, title: 'Planned BACnet Network Topology', notes: 'Imported from Network Planner', subnets, infrastructure: [], paths: [], viewMode: 'networks' };
+  const infrastructure = plan.filter(item => item.networkType === 'bacnet-sc' && item.scPrimaryHubName?.trim()).map(source => {
+    const hub = createInfrastructure(subnets.length + 1);
+    hub.name = source.scFailoverEnabled ? `${source.scPrimaryHubName} HA Cluster` : source.scPrimaryHubName!;
+    hub.kind = source.scFailoverEnabled ? 'sc-hub-cluster' : 'sc-hub';
+    hub.ip = source.scPrimaryHubIp || '';
+    hub.uri = source.scPrimaryHubUri || '';
+    hub.failoverIp = source.scFailoverHubIp || '';
+    hub.failoverUri = source.scFailoverHubUri || '';
+    hub.subnetIds = [idMap.get(source.id)!];
+    hub.underlaySubnetIds = (source.scUnderlaySubnetIds ?? []).map(id => idMap.get(id)).filter((id): id is string => Boolean(id));
+    hub.notes = source.scFailoverEnabled ? `Primary: ${source.scPrimaryHubName}; failover: ${source.scFailoverHubName || 'unnamed'}` : 'BACnet/SC primary hub';
+    return hub;
+  });
+  return { version: 1, title: 'Planned BACnet Network Topology', notes: 'Imported from Network Planner', subnets, infrastructure, paths: [], viewMode: 'networks' };
 }
 
 export function subnetCidr(subnet: DiagramSubnet): string {
+  if (subnet.networkType === 'bacnet-sc') return `BACnet/SC · Network ${subnet.bacnetNetworkNumber || 'not set'}`;
   if (subnet.networkType === 'mstp') return `MS/TP · Network ${subnet.bacnetNetworkNumber || 'not set'} · ${subnet.mstpBaudRate || 38400} baud`;
   if (subnet.networkType === 'arcnet') return `ARCNET · Network ${subnet.bacnetNetworkNumber || 'not set'} · ${subnet.arcnetDataRate || 2500} kbps`;
   const details = getSubnetDetails(subnet.address, subnet.cidr);
@@ -224,6 +246,7 @@ export function addressState(item: DiagramDeviceAddress | undefined, subnet: Dia
     const node = Number(item.ip);
     return Number.isInteger(node) && node >= 0 && node <= 255 ? 'valid' : 'invalid';
   }
+  if (subnet.networkType === 'bacnet-sc') return ipToLong(item.ip) === null ? 'invalid' : 'valid';
   const ip = ipToLong(item.ip);
   const details = getSubnetDetails(subnet.address, subnet.cidr);
   if (ip === null || !details) return 'invalid';
@@ -238,7 +261,7 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
     if ((!subnet.networkType || subnet.networkType === 'bacnet-ip') && !getSubnetDetails(subnet.address, subnet.cidr)) {
       diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed subnet'} has an invalid network address.` });
     }
-    if ((subnet.networkType === 'mstp' || subnet.networkType === 'arcnet')
+    if ((subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' || subnet.networkType === 'bacnet-sc')
       && (!Number.isInteger(Number(subnet.bacnetNetworkNumber)) || Number(subnet.bacnetNetworkNumber) < 1 || Number(subnet.bacnetNetworkNumber) > 65534)) {
       diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed network'} needs a BACnet network number from 1–65534.` });
     }
@@ -251,6 +274,17 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
       if (!router) diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed field bus'} must be routed by a BACnet device on the upstream network.` });
       else if (!routerAddress || addressState(routerAddress, upstream) !== 'valid') diagnostics.push({ level: 'error', message: `${router.name || 'Field-bus router'} needs a valid address on the selected upstream network.` });
     }
+    if (subnet.networkType === 'bacnet-sc') {
+      const servingHubs = project.infrastructure.filter(item => (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') && item.subnetIds.includes(subnet.id));
+      if (!servingHubs.length) diagnostics.push({ level: 'error', message: `${subnet.name || 'Unnamed BACnet/SC network'} needs a BACnet/SC hub or HA hub cluster.` });
+      const scMembers = project.subnets.flatMap(owner => owner.devices.filter(device => device.nics.some(nic => nic.addresses.some(address => address.subnetId === subnet.id))));
+      for (const device of scMembers) {
+        const hub = project.infrastructure.find(item => item.id === device.scHubId && (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster'));
+        if (!hub) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed BACnet/SC node'} must be assigned to a BACnet/SC hub or HA hub cluster.` });
+        else if (!hub.subnetIds.includes(subnet.id)) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed BACnet/SC node'} is assigned to ${hub.name}, but that hub does not serve ${subnet.name}.` });
+        else if (!device.scHubL3Reachable) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed BACnet/SC node'} has no verified L3 path to ${hub.name}. Verify forward and return routing, DNS, firewall policy, TCP reachability, and TLS trust for the configured wss endpoint.` });
+      }
+    }
     for (const device of subnet.devices) {
       for (const nic of device.nics) {
         for (const address of nic.addresses) {
@@ -260,11 +294,11 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
           const state = addressState(address, addressSubnet);
           const addressName = `${device.name || 'Unnamed device'} ${nic.name || 'NIC'} ${address.label || 'address'}`;
           if (!addressSubnet) diagnostics.push({ level: 'error', message: `${addressName} is not assigned to an available subnet.` });
-          else if (ownerType !== addressType) diagnostics.push({ level: 'error', message: `${addressName} cannot use ${subnetCidr(addressSubnet)} because the device belongs to a different datalink type.` });
-          else if (state === 'invalid') diagnostics.push({ level: 'error', message: `${addressName} has an invalid ${addressSubnet.networkType === 'mstp' ? 'MS/TP MAC' : addressSubnet.networkType === 'arcnet' ? 'ARCNET node' : 'IP'} address.` });
+          else if (ownerType !== addressType && ownerType !== 'bacnet-sc' && addressType !== 'bacnet-sc') diagnostics.push({ level: 'error', message: `${addressName} cannot use ${subnetCidr(addressSubnet)} because the device belongs to a different datalink type.` });
+          else if (state === 'invalid') diagnostics.push({ level: 'error', message: `${addressName} has an invalid ${addressSubnet.networkType === 'mstp' ? 'MS/TP MAC' : addressSubnet.networkType === 'arcnet' ? 'ARCNET node' : addressSubnet.networkType === 'bacnet-sc' ? 'BACnet/SC node IP' : 'IP'} address.` });
           else if (state === 'outside') diagnostics.push({ level: 'warning', message: `${addressName} (${address.ip}) is outside ${subnetCidr(addressSubnet)}.` });
           else if (state === 'valid') {
-            const key = addressSubnet.networkType === 'mstp' || addressSubnet.networkType === 'arcnet' ? `${addressSubnet.id}:${address.ip.trim()}` : address.ip.trim();
+            const key = addressSubnet.networkType === 'mstp' || addressSubnet.networkType === 'arcnet' || addressSubnet.networkType === 'bacnet-sc' ? `${addressSubnet.id}:${address.ip.trim()}` : address.ip.trim();
             usedIps.set(key, [...(usedIps.get(key) ?? []), addressName]);
           }
         }
@@ -273,10 +307,47 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
   }
 
   for (const item of project.infrastructure) {
+    if (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') {
+      if (!item.uri?.startsWith('wss://')) diagnostics.push({ level: 'error', message: `${item.name || 'BACnet/SC hub'} needs a primary wss:// hub URI.` });
+      if (!item.ip.trim() || ipToLong(item.ip) === null) diagnostics.push({ level: 'error', message: `${item.name || 'BACnet/SC hub'} needs a valid primary hub IP for L3 reachability checks.` });
+      if (item.kind === 'sc-hub-cluster') {
+        if (!item.failoverUri?.startsWith('wss://')) diagnostics.push({ level: 'error', message: `${item.name || 'BACnet/SC hub cluster'} needs a failover wss:// hub URI.` });
+        if (!item.failoverIp?.trim() || ipToLong(item.failoverIp) === null) diagnostics.push({ level: 'error', message: `${item.name || 'BACnet/SC hub cluster'} needs a valid failover hub IP.` });
+      }
+      const underlays = (item.underlaySubnetIds ?? []).map(id => project.subnets.find(subnet => subnet.id === id && (!subnet.networkType || subnet.networkType === 'bacnet-ip'))).filter((subnet): subnet is DiagramSubnet => Boolean(subnet));
+      if (!underlays.length) diagnostics.push({ level: 'error', message: `${item.name || 'BACnet/SC hub'} must attach to at least one physical IP underlay.` });
+      else if (ipToLong(item.ip) !== null && !underlays.some(subnet => addressState({ id: '', subnetId: subnet.id, ip: item.ip, label: '' }, subnet) === 'valid')) diagnostics.push({ level: 'warning', message: `${item.name} is outside its attached IP-underlay prefixes; document the routed path to the hub.` });
+    }
     if (item.ip.trim()) {
       if (ipToLong(item.ip) === null) diagnostics.push({ level: 'error', message: `${item.name || 'Unnamed infrastructure'} has an invalid IP address.` });
       else usedIps.set(item.ip.trim(), [...(usedIps.get(item.ip.trim()) ?? []), item.name || 'Unnamed infrastructure']);
     }
+  }
+
+  const scHubs = project.infrastructure.filter(item => item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster');
+  for (const hub of scHubs) {
+    for (const peerId of hub.peerInfrastructureIds ?? []) {
+      const peer = scHubs.find(item => item.id === peerId);
+      if (!peer) diagnostics.push({ level: 'error', message: `${hub.name} references a missing BACnet/SC hub connection.` });
+      else if (!(peer.peerInfrastructureIds ?? []).includes(hub.id)) diagnostics.push({ level: 'warning', message: `${hub.name} → ${peer.name} is modeled one-way; verify the intended BACnet/SC hub continuity.` });
+    }
+  }
+  for (const network of project.subnets.filter(item => item.networkType === 'bacnet-sc')) {
+    const members = project.subnets.flatMap(owner => owner.devices.filter(device => device.nics.some(nic => nic.addresses.some(address => address.subnetId === network.id))));
+    const assigned = [...new Set(members.map(device => device.scHubId).filter((id): id is string => Boolean(id)))];
+    if (assigned.length < 2 || network.scDirectConnections) continue;
+    const visited = new Set<string>();
+    const queue = [assigned[0]];
+    while (queue.length) {
+      const id = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const hub = scHubs.find(item => item.id === id);
+      for (const peer of hub?.peerInfrastructureIds ?? []) if (!visited.has(peer)) queue.push(peer);
+      for (const reverse of scHubs.filter(item => (item.peerInfrastructureIds ?? []).includes(id))) if (!visited.has(reverse.id)) queue.push(reverse.id);
+    }
+    const disconnected = assigned.filter(id => !visited.has(id));
+    if (disconnected.length) diagnostics.push({ level: 'error', message: `${network.name} assigns nodes to hubs without a modeled hub-to-hub path. Add hub connections or explicitly model supported direct node connections.` });
   }
 
   for (const [ip, names] of usedIps) {
@@ -326,7 +397,10 @@ export function normalizeDiagramProject(project: DiagramProject): DiagramProject
     subnet.arcnetDataRate ??= 2500;
     subnet.upstreamSubnetId ??= '';
     subnet.routerId ??= '';
+    subnet.scDirectConnections ??= false;
     for (const device of subnet.devices) {
+      device.scHubId ??= '';
+      device.scHubL3Reachable ??= false;
       if (!Array.isArray(device.nics)) {
         const nic = createNic(subnet.id);
         nic.addresses[0].ip = device.ip ?? '';
@@ -340,6 +414,13 @@ export function normalizeDiagramProject(project: DiagramProject): DiagramProject
       delete device.ip;
       delete device.additionalInterfaces;
     }
+  }
+  for (const item of project.infrastructure) {
+    item.uri ??= '';
+    item.failoverIp ??= '';
+    item.failoverUri ??= '';
+    item.peerInfrastructureIds ??= [];
+    item.underlaySubnetIds ??= [];
   }
   if (!Array.isArray(project.paths)) project.paths = [];
   const devices = project.subnets.flatMap(subnet => subnet.devices);
@@ -377,7 +458,8 @@ export function isDiagramProject(value: unknown): value is DiagramProject {
           && typeof address.ip === 'string' && typeof address.label === 'string');
     }));
     return typeof item.id === 'string' && typeof item.name === 'string' && (item.ip === undefined || typeof item.ip === 'string')
-      && typeof item.notes === 'string' && ['controller', 'workstation', 'server', 'sensor', 'other'].includes(item.kind ?? '')
+      && typeof item.notes === 'string' && (item.scHubId === undefined || typeof item.scHubId === 'string')
+      && (item.scHubL3Reachable === undefined || typeof item.scHubL3Reachable === 'boolean') && ['controller', 'workstation', 'server', 'sensor', 'other'].includes(item.kind ?? '')
       && legacyInterfacesValid && nicsValid && (Array.isArray(item.nics) || typeof item.ip === 'string');
   });
   const subnetsValid = candidate.subnets.every(subnet => {
@@ -391,7 +473,7 @@ export function isDiagramProject(value: unknown): value is DiagramProject {
     if (!infrastructure || typeof infrastructure !== 'object') return false;
     const item = infrastructure as Partial<DiagramInfrastructure>;
     return typeof item.id === 'string' && typeof item.name === 'string' && typeof item.ip === 'string'
-      && typeof item.notes === 'string' && ['router', 'switch', 'firewall', 'bbmd', 'gateway'].includes(item.kind ?? '')
+      && typeof item.notes === 'string' && ['router', 'switch', 'firewall', 'bbmd', 'gateway', 'sc-hub', 'sc-hub-cluster'].includes(item.kind ?? '')
       && Array.isArray(item.subnetIds) && item.subnetIds.every(id => typeof id === 'string');
   });
   const pathsValid = candidate.paths === undefined || (Array.isArray(candidate.paths) && candidate.paths.every(path => {

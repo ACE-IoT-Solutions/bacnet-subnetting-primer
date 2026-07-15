@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createDefaultProject, createDevice, createDeviceAddress, createDiagramProjectFromPlan, createNic, createSubnet, createTestPath, deviceAddressState,
-  getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, normalizeDiagramProject, type DiagramDevice, type DiagramProject
+  getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, normalizeDiagramProject, type DiagramDevice, type DiagramInfrastructure, type DiagramProject
 } from './network-diagram';
 
 describe('network diagram validation', () => {
@@ -161,5 +161,65 @@ describe('network diagram validation', () => {
     expect(diagram.subnets[0].devices[0].requiredForRouting).toBe(true);
     expect(diagram.subnets[1].routerId).toBe(diagram.subnets[0].devices[0].id);
     expect(getDiagramDiagnostics(diagram)).toEqual([]);
+  });
+
+  it('validates BACnet/SC hub assignment, failover endpoints, L3 reachability, and hub continuity', () => {
+    const project = createDefaultProject();
+    const underlay = project.subnets[0];
+    underlay.name = 'IP Underlay';
+    underlay.address = '10.0.0.0';
+    underlay.cidr = 8;
+    underlay.devices = [];
+    const scNetwork = createSubnet(2);
+    project.subnets.push(scNetwork);
+    const sc = scNetwork;
+    sc.networkType = 'bacnet-sc';
+    sc.bacnetNetworkNumber = '3001';
+    sc.devices = [createDevice(1, sc.id), createDevice(2, sc.id)];
+    const primary: DiagramInfrastructure = project.infrastructure[0] = {
+      id: 'hub-a', name: 'SC Hub A', kind: 'sc-hub', ip: '10.20.0.10', uri: 'wss://hub-a.example',
+      failoverIp: '', failoverUri: '', subnetIds: [sc.id], underlaySubnetIds: [underlay.id], peerInfrastructureIds: [], notes: ''
+    };
+    const secondary: DiagramInfrastructure = project.infrastructure[1] = {
+      id: 'hub-b', name: 'SC Hub B', kind: 'sc-hub-cluster', ip: '10.30.0.10', uri: 'wss://hub-b.example',
+      failoverIp: '10.31.0.10', failoverUri: 'wss://hub-b-failover.example', subnetIds: [sc.id], underlaySubnetIds: [underlay.id], peerInfrastructureIds: [], notes: ''
+    };
+    sc.devices[0].nics[0].addresses[0].ip = '10.20.0.20';
+    sc.devices[0].scHubId = primary.id;
+    sc.devices[0].scHubL3Reachable = true;
+    sc.devices[1].nics[0].addresses[0].ip = '10.30.0.20';
+    sc.devices[1].scHubId = secondary.id;
+    sc.devices[1].scHubL3Reachable = true;
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('without a modeled hub-to-hub path'))).toBe(true);
+    primary.peerInfrastructureIds = [secondary.id];
+    secondary.peerInfrastructureIds = [primary.id];
+    expect(getDiagramDiagnostics(project)).toEqual([]);
+    secondary.failoverUri = 'https://not-websocket.example';
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('failover wss://'))).toBe(true);
+  });
+
+  it('imports planner BACnet/SC hubs as network infrastructure', () => {
+    const base = { gatewayOffset: 1, vlan: '' as const, port: 47808, bbmdEnabled: false, bbmdOffset: 10, bmsPlaced: false, bmsRole: 'none' as const, fdrTargetSubnetId: '' };
+    const diagram = createDiagramProjectFromPlan([
+      { ...base, id: 'ip', name: 'IP Underlay', ip: '10.0.0.0', cidr: 8, networkType: 'bacnet-ip' },
+      { ...base, id: 'sc', name: 'Secure Campus', ip: '', cidr: 24, networkType: 'bacnet-sc', bacnetNetworkNumber: 3001, scPrimaryHubName: 'Campus Hub', scPrimaryHubIp: '10.0.0.10', scPrimaryHubUri: 'wss://hub.example', scFailoverEnabled: true, scFailoverHubIp: '10.0.1.10', scFailoverHubUri: 'wss://hub-failover.example', scUnderlaySubnetIds: ['ip'] }
+    ]);
+    expect(diagram.subnets[1].networkType).toBe('bacnet-sc');
+    expect(diagram.infrastructure[0].kind).toBe('sc-hub-cluster');
+    expect(diagram.infrastructure[0].subnetIds).toEqual([diagram.subnets[1].id]);
+    expect(diagram.infrastructure[0].underlaySubnetIds).toEqual([diagram.subnets[0].id]);
+    expect(getDiagramDiagnostics(diagram)).toEqual([]);
+  });
+
+  it('allows one router device to have BACnet/IP and BACnet/SC ports', () => {
+    const project = createDefaultProject();
+    const ip = project.subnets[0];
+    const router = ip.devices[0];
+    router.requiredForRouting = true;
+    const sc = createSubnet(2); sc.networkType = 'bacnet-sc'; sc.bacnetNetworkNumber = '3001'; project.subnets.push(sc);
+    const scNic = createNic(sc.id, 2); scNic.addresses[0].ip = '192.168.0.20'; router.nics.push(scNic);
+    const hub: DiagramInfrastructure = { id: 'hub', name: 'SC Hub', kind: 'sc-hub', ip: '192.168.0.10', uri: 'wss://hub.example', failoverIp: '', failoverUri: '', subnetIds: [sc.id], underlaySubnetIds: [ip.id], peerInfrastructureIds: [], notes: '' };
+    project.infrastructure.push(hub); router.scHubId = hub.id; router.scHubL3Reachable = true;
+    expect(getDiagramDiagnostics(project)).toEqual([]);
   });
 });

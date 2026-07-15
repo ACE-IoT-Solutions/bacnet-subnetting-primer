@@ -15,7 +15,7 @@ export interface PlannerSubnet {
   fdrTargetSubnetId: string;
   plannedDevices?: number;
   routeTargets?: string[];
-  networkType?: 'bacnet-ip' | 'mstp' | 'arcnet';
+  networkType?: 'bacnet-ip' | 'bacnet-sc' | 'mstp' | 'arcnet';
   bacnetNetworkNumber?: number | '';
   mstpBaudRate?: number;
   mstpMaxMaster?: number;
@@ -23,6 +23,14 @@ export interface PlannerSubnet {
   upstreamIpSubnetId?: string;
   routerName?: string;
   routerIp?: string;
+  scPrimaryHubName?: string;
+  scPrimaryHubIp?: string;
+  scPrimaryHubUri?: string;
+  scFailoverEnabled?: boolean;
+  scFailoverHubName?: string;
+  scFailoverHubIp?: string;
+  scFailoverHubUri?: string;
+  scUnderlaySubnetIds?: string[];
 }
 
 export function isIpNetwork(subnet: PlannerSubnet): boolean {

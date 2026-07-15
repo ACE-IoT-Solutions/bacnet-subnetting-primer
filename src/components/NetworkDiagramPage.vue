@@ -34,8 +34,8 @@
         </div>
 
         <div class="editor-section-heading">
-          <div><span class="step-number">1</span><h3>Subnets & devices</h3></div>
-          <button class="icon-text-button" type="button" @click="addSubnet">+ Add subnet</button>
+          <div><span class="step-number">1</span><h3>Networks, overlays & devices</h3></div>
+          <button class="icon-text-button" type="button" @click="addSubnet">+ Add network</button>
         </div>
 
         <article v-for="(subnet, subnetIndex) in project.subnets" :key="subnet.id" class="glass-card subnet-editor-card" :style="{ '--subnet-color': subnet.color }">
@@ -45,7 +45,7 @@
           </div>
           <div class="editor-grid two-columns">
             <div class="form-group"><label>Name</label><input v-model="subnet.name" type="text" placeholder="Controls LAN"></div>
-            <div class="form-group"><label>Datalink type</label><select v-model="subnet.networkType"><option value="bacnet-ip">BACnet/IP</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option></select></div>
+            <div class="form-group"><label>Datalink type</label><select v-model="subnet.networkType"><option value="bacnet-ip">BACnet/IP</option><option value="bacnet-sc">BACnet/SC</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option></select></div>
           </div>
           <div v-if="!subnet.networkType || subnet.networkType === 'bacnet-ip'" class="editor-grid network-address-grid">
             <div class="form-group"><label>VLAN (optional)</label><input v-model="subnet.vlan" type="text" placeholder="10"></div>
@@ -58,6 +58,11 @@
               </select>
             </div>
             </div>
+          </div>
+          <div v-else-if="subnet.networkType === 'bacnet-sc'" class="editor-grid two-columns">
+            <div class="form-group"><label>BACnet network number</label><input v-model="subnet.bacnetNetworkNumber" type="number" min="1" max="65534" placeholder="3001"></div>
+            <AceToggle :model-value="Boolean(subnet.scDirectConnections)" label="Model direct node connections" description="Optional unicast path; hub connectivity remains the baseline" @update:model-value="subnet.scDirectConnections = $event" />
+            <span class="field-hint" style="grid-column:1/-1">BACnet/SC uses secure WebSockets over IPv4 or IPv6. A valid BACnet path requires both working IP transport to the selected hub and continuous SC hub/direct connections between nodes.</span>
           </div>
           <div v-else class="editor-grid two-columns">
             <div class="form-group"><label>Upstream routed network</label><select v-model="subnet.upstreamSubnetId"><option value="">Choose upstream network</option><option v-for="upstream in upstreamNetworkOptions(subnet)" :key="upstream.id" :value="upstream.id">{{ upstream.name }} — {{ subnetCidr(upstream) }}</option></select></div>
@@ -84,6 +89,13 @@
               </div>
               <button class="row-remove-button" type="button" title="Remove device" @click="removeDevice(subnet, device.id)">×</button>
             </div>
+            <div v-if="deviceScNetworkIds(device).length" class="form-group compact-group sc-hub-assignment">
+              <label>Primary / HA hub assignment</label>
+              <select v-model="device.scHubId"><option value="">Choose hub infrastructure</option><option v-for="hub in scHubsForDevice(device)" :key="hub.id" :value="hub.id">{{ hub.name }} — {{ hub.kind === 'sc-hub-cluster' ? 'HA cluster' : 'hub' }}</option></select>
+              <AceToggle :model-value="Boolean(device.scHubL3Reachable)" label="L3 path to selected hub verified" description="Forward route, return route, TCP/WebSocket policy, DNS, and TLS trust are available" @update:model-value="device.scHubL3Reachable = $event" />
+              <AceToggle :model-value="Boolean(device.requiredForRouting)" label="BACnet router between datalinks" description="Show this device as the router joining its BACnet/IP and BACnet/SC ports" @update:model-value="device.requiredForRouting = $event" />
+              <span class="field-hint">The node maintains one active hub connection and uses its configured failover hub when the primary cannot be reached.</span>
+            </div>
             <div class="interface-summary"><span>Network interfaces and assigned addresses</span><button type="button" @click="addDeviceNic(device, subnet.id)">+ Add NIC</button></div>
             <div v-for="(nic, nicIndex) in device.nics" :key="nic.id" class="nic-editor-card">
               <div class="nic-editor-heading">
@@ -108,7 +120,7 @@
           <div><span class="step-number">2</span><h3>IT infrastructure</h3></div>
           <button class="icon-text-button" type="button" @click="addInfrastructure">+ Add infrastructure</button>
         </div>
-        <div v-if="!project.infrastructure.length" class="glass-card empty-editor-state infrastructure-empty">Add routers, switches, firewalls, gateways, or BBMDs and connect them to the relevant subnets.</div>
+        <div v-if="!project.infrastructure.length" class="glass-card empty-editor-state infrastructure-empty">Add routers, switches, firewalls, gateways, BBMDs, or BACnet/SC hubs and connect them to the relevant networks.</div>
         <article v-for="item in project.infrastructure" :key="item.id" class="glass-card infrastructure-editor-card">
           <div class="editor-card-header">
             <strong>{{ item.name || 'Unnamed infrastructure' }}</strong>
@@ -119,7 +131,14 @@
             <div class="form-group"><label>Type</label><select v-model="item.kind"><option v-for="option in infrastructureKindOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></div>
           </div>
           <div class="form-group"><label>Management / interface IP (optional)</label><input v-model="item.ip" type="text" placeholder="10.0.0.1" :class="{ 'input-invalid': item.ip && !isIpValid(item.ip) }"></div>
-          <div class="form-group compact-group">
+          <template v-if="item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster'">
+            <div class="form-group"><label>Primary hub WebSocket URI</label><input v-model="item.uri" type="text" placeholder="wss://sc-hub.example.com"></div>
+            <div v-if="item.kind === 'sc-hub-cluster'" class="editor-grid two-columns"><div class="form-group"><label>Failover hub IP</label><input v-model="item.failoverIp" type="text" placeholder="10.0.1.10"></div><div class="form-group"><label>Failover hub WebSocket URI</label><input v-model="item.failoverUri" type="text" placeholder="wss://sc-failover.example.com"></div></div>
+            <div class="form-group compact-group"><label>Connected BACnet/SC networks</label><div class="subnet-checkboxes"><label v-for="subnet in scNetworks" :key="subnet.id" class="checkbox-chip"><input v-model="item.subnetIds" type="checkbox" :value="subnet.id"><span :style="{ '--chip-color': subnet.color }">{{ subnet.name }}</span></label></div></div>
+            <div class="form-group compact-group"><label>Physical IP underlays</label><div class="subnet-checkboxes"><label v-for="subnet in ipSubnets" :key="subnet.id" class="checkbox-chip"><input v-model="item.underlaySubnetIds" type="checkbox" :value="subnet.id"><span :style="{ '--chip-color': subnet.color }">{{ subnet.name }}</span></label></div></div>
+            <div class="form-group compact-group"><label>Connections to other SC hubs</label><div class="subnet-checkboxes"><label v-for="peer in otherScHubs(item.id)" :key="peer.id" class="checkbox-chip"><input v-model="item.peerInfrastructureIds" type="checkbox" :value="peer.id"><span>{{ peer.name }}</span></label></div></div>
+          </template>
+          <div v-else class="form-group compact-group">
             <label>Connected BACnet/IP subnets</label>
             <div v-if="project.subnets.length" class="subnet-checkboxes">
               <label v-for="subnet in ipSubnets" :key="subnet.id" class="checkbox-chip">
@@ -196,7 +215,7 @@
             <text class="export-title" x="40" y="42">{{ clipped(project.title || 'Untitled network diagram', 70) }}</text>
             <text v-if="project.notes" class="export-notes" x="40" y="67">{{ clipped(project.notes, 130) }}</text>
             <text class="layer-label" x="24" y="102">INFRASTRUCTURE</text>
-            <text class="layer-label" x="24" :y="subnetY - 10">BACNET/IP SUBNETS</text>
+            <text class="layer-label" x="24" :y="subnetY - 10">ROUTED BACNET DATALINKS</text>
             <text v-if="ipHostNodes.length" class="layer-label" x="24" :y="ipHostY - 10">IP DEVICES &amp; ROUTERS</text>
             <text v-if="fieldSegments.length" class="layer-label" x="24" :y="fieldBusY - 10">ROUTED FIELD BUSES</text>
             <text v-if="fieldHostNodes.length" class="layer-label" x="24" :y="fieldHostY - 10">FIELD DEVICES</text>
@@ -241,12 +260,16 @@
             <g v-for="(host, hostIndex) in hostNodes" :key="`host-${host.device.id}`" :transform="`translate(${hostX(host, hostIndex)}, ${hostYFor(host)})`">
               <title>{{ deviceTooltip(host.device) }}</title>
               <rect class="host-box" :width="hostWidth" :height="hostHeight" rx="12" />
-              <text class="node-category" x="16" y="21">HOST</text>
+              <text class="node-category" x="16" y="21">{{ deviceScNetworkIds(host.device).length ? `SC NODE · ${clipped(assignedHubName(host.device), 20)}` : 'HOST' }}</text>
               <circle class="device-icon" cx="25" cy="45" r="15" />
               <use :href="host.device.requiredForRouting ? '#ace-icon-router' : '#ace-icon-device'" class="ace-node-icon host-node-icon" x="15" y="35" width="20" height="20" />
               <text class="device-name" x="47" y="42">{{ clipped(host.device.name || 'Unnamed device', 25) }}</text>
               <text class="device-kind" x="47" y="58">{{ host.device.kind }}</text>
-              <text class="host-address-summary" x="16" y="81">{{ clipped(hostAddressSummary(host.device), 35) }}</text>
+              <g v-for="(row, addressIndex) in hostAddressRows(host.device)" :key="row.id">
+                <circle :cx="18" :cy="77 + addressIndex * 30" r="3" :fill="row.color" />
+                <text class="host-address-label" x="28" :y="80 + addressIndex * 30">{{ clipped(row.label, 38) }}</text>
+                <text class="host-address-summary" x="28" :y="93 + addressIndex * 30">{{ row.address || 'Address not set' }}</text>
+              </g>
               <rect class="host-count-badge" :x="hostWidth - 61" y="10" width="47" height="18" rx="9" />
               <text class="host-count-text" :x="hostWidth - 37.5" y="22" text-anchor="middle">{{ host.device.nics.length }} NIC / {{ addressCount(host.device) }} addr</text>
             </g>
@@ -279,6 +302,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import AppButton from './AppButton.vue';
+import AceToggle from './AceToggle.vue';
 import { getSubnetDetails, ipToLong } from '../lib/subnet';
 import {
   addressState, createDefaultProject, createDevice, createDeviceAddress, createInfrastructure, createNic, createSubnet,
@@ -288,7 +312,7 @@ import {
 } from '../lib/network-diagram';
 
 const STORAGE_KEY = 'aceiot-network-diagram-v1';
-const SVG_EXPORT_STYLES = `.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2;stroke-linejoin:round}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2}.address-endpoint{stroke:#121212;stroke-width:1}.test-path{fill:none;stroke-width:2.75;opacity:.78}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}`;
+const SVG_EXPORT_STYLES = `.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2;stroke-linejoin:round}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2}.address-endpoint{stroke:#121212;stroke-width:1}.test-path{fill:none;stroke-width:2.75;opacity:.78}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}`;
 const project = ref<DiagramProject>(createDefaultProject());
 const fileInput = ref<HTMLInputElement | null>(null);
 const diagramSvg = ref<SVGSVGElement | null>(null);
@@ -297,10 +321,7 @@ const subnetWidth = 240;
 const subnetHeight = 88;
 const subnetY = 210;
 const ipHostY = 350;
-const fieldBusY = 500;
-const hostWidth = 240;
-const hostHeight = 96;
-const fieldHostY = 640;
+const hostWidth = 280;
 const cidrOptions = Array.from({ length: 25 }, (_, index) => index + 8);
 const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 const deviceKindOptions: { value: DeviceKind; label: string }[] = [
@@ -309,18 +330,24 @@ const deviceKindOptions: { value: DeviceKind; label: string }[] = [
 ];
 const infrastructureKindOptions = [
   { value: 'router', label: 'Router' }, { value: 'switch', label: 'Switch' }, { value: 'firewall', label: 'Firewall' },
-  { value: 'bbmd', label: 'BBMD' }, { value: 'gateway', label: 'Gateway' }
+  { value: 'bbmd', label: 'BBMD' }, { value: 'gateway', label: 'Gateway' },
+  { value: 'sc-hub', label: 'BACnet/SC Hub' }, { value: 'sc-hub-cluster', label: 'BACnet/SC HA Hub Cluster' }
 ];
 interface HostNode { device: DiagramDevice; ownerSubnet: DiagramSubnet }
 
 const diagnostics = computed(() => getDiagramDiagnostics(project.value));
 const deviceCount = computed(() => project.value.subnets.reduce((total, subnet) => total + subnet.devices.length, 0));
 const ipSubnets = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip'));
+const scNetworks = computed(() => project.value.subnets.filter(subnet => subnet.networkType === 'bacnet-sc'));
+const routedNetworks = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip' || subnet.networkType === 'bacnet-sc'));
 const fieldSegments = computed(() => project.value.subnets.filter(subnet => subnet.networkType === 'mstp' || subnet.networkType === 'arcnet'));
 const hostNodes = computed(() => project.value.subnets.flatMap(ownerSubnet => ownerSubnet.devices
   .filter(device => project.value.viewMode !== 'networks' || device.requiredForRouting || project.value.subnets.some(segment => segment.routerId === device.id))
   .map(device => ({ device, ownerSubnet }))));
-const ipHostNodes = computed(() => hostNodes.value.filter(host => !host.ownerSubnet.networkType || host.ownerSubnet.networkType === 'bacnet-ip'));
+const hostHeight = computed(() => Math.max(110, 80 + Math.max(1, ...hostNodes.value.map(host => addressCount(host.device))) * 30));
+const fieldBusY = computed(() => ipHostY + hostHeight.value + 70);
+const fieldHostY = computed(() => fieldBusY.value + subnetHeight + 60);
+const ipHostNodes = computed(() => hostNodes.value.filter(host => !host.ownerSubnet.networkType || host.ownerSubnet.networkType === 'bacnet-ip' || host.ownerSubnet.networkType === 'bacnet-sc'));
 const fieldHostNodes = computed(() => hostNodes.value.filter(host => host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet'));
 const endpointOptions = computed(() => [
   ...project.value.infrastructure.map(item => ({ id: item.id, nodeId: item.id, label: `${item.name || 'Unnamed infrastructure'} — ${item.ip || 'IP not set'} (${item.kind})` })),
@@ -336,14 +363,14 @@ const endpointOptions = computed(() => [
 const canvasWidth = computed(() => Math.max(
   960,
   80 + project.value.subnets.length * 275,
-  80 + hostNodes.value.length * 275,
+  80 + hostNodes.value.length * 315,
   80 + project.value.infrastructure.length * 190
 ));
 const legendColumns = computed(() => canvasWidth.value >= 1250 ? 2 : 1);
 const legendCardWidth = computed(() => (canvasWidth.value - 80 - (legendColumns.value - 1) * 20) / legendColumns.value);
 const legendTextLimit = computed(() => Math.max(32, Math.floor((legendCardWidth.value - 90) / 6.3)));
 const legendRows = computed(() => Math.ceil(project.value.paths.length / legendColumns.value));
-const legendStart = computed(() => fieldHostNodes.value.length ? fieldHostY + hostHeight + 75 + project.value.paths.length * 18 : ipHostNodes.value.length ? ipHostY + hostHeight + 75 + project.value.paths.length * 18 : 330);
+const legendStart = computed(() => fieldHostNodes.value.length ? fieldHostY.value + hostHeight.value + 75 + project.value.paths.length * 18 : ipHostNodes.value.length ? ipHostY + hostHeight.value + 75 + project.value.paths.length * 18 : 330);
 const canvasHeight = computed(() => Math.max(hostNodes.value.length ? 625 : 430, legendStart.value + legendRows.value * 124 + 42));
 
 onMounted(() => {
@@ -374,7 +401,10 @@ function removeSubnet(id: string) {
     device.nics.flatMap(nic => nic.addresses.filter(address => subnet.id === id || address.subnetId === id).map(address => address.id))
   ));
   project.value.subnets = project.value.subnets.filter(subnet => subnet.id !== id);
-  project.value.infrastructure.forEach(item => { item.subnetIds = item.subnetIds.filter(subnetId => subnetId !== id); });
+  project.value.infrastructure.forEach(item => {
+    item.subnetIds = item.subnetIds.filter(subnetId => subnetId !== id);
+    item.underlaySubnetIds = (item.underlaySubnetIds ?? []).filter(subnetId => subnetId !== id);
+  });
   project.value.subnets.forEach(subnet => subnet.devices.forEach(device => {
     device.nics.forEach(nic => { nic.addresses = nic.addresses.filter(address => address.subnetId !== id); });
     device.nics = device.nics.filter(nic => nic.addresses.length > 0);
@@ -444,26 +474,33 @@ function removeEndpointsFromPaths(endpointIds: string[]) {
 }
 function resetProject() { if (window.confirm('Replace the current diagram with the starter example?')) project.value = createDefaultProject(); }
 function subnetIsValid(subnet: DiagramSubnet) {
+  if (subnet.networkType === 'bacnet-sc') return Number(subnet.bacnetNetworkNumber) >= 1 && Number(subnet.bacnetNetworkNumber) <= 65534;
   if (subnet.networkType === 'mstp' || subnet.networkType === 'arcnet') return Number(subnet.bacnetNetworkNumber) >= 1 && Number(subnet.bacnetNetworkNumber) <= 65534;
   return getSubnetDetails(subnet.address, subnet.cidr) !== null;
 }
 function isIpValid(ip: string) { return ipToLong(ip) !== null; }
-function networkTypeLabel(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' ? 'MS/TP' : subnet.networkType === 'arcnet' ? 'ARCNET' : 'BACnet/IP subnet'; }
+function networkTypeLabel(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' ? 'MS/TP' : subnet.networkType === 'arcnet' ? 'ARCNET' : subnet.networkType === 'bacnet-sc' ? 'BACnet/SC network' : 'BACnet/IP subnet'; }
 function normalizedNetworkType(subnet: DiagramSubnet) { return subnet.networkType || 'bacnet-ip'; }
-function compatibleAddressNetworks(owner: DiagramSubnet) { return project.value.subnets.filter(candidate => normalizedNetworkType(candidate) === normalizedNetworkType(owner)); }
+function compatibleAddressNetworks(owner: DiagramSubnet) { return project.value.subnets.filter(candidate => normalizedNetworkType(candidate) === normalizedNetworkType(owner)
+  || normalizedNetworkType(candidate) === 'bacnet-sc' || normalizedNetworkType(owner) === 'bacnet-sc'); }
 function upstreamNetworkOptions(segment: DiagramSubnet) {
   return project.value.subnets.filter(candidate => candidate.id !== segment.id
     && (normalizedNetworkType(candidate) === 'bacnet-ip' || normalizedNetworkType(candidate) === normalizedNetworkType(segment)));
 }
 function addressFieldLabel(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
-  return subnet?.networkType === 'mstp' ? 'MS/TP MAC (0–127)' : subnet?.networkType === 'arcnet' ? 'ARCNET node (0–255)' : 'IP address';
+  return subnet?.networkType === 'mstp' ? 'MS/TP MAC (0–127)' : subnet?.networkType === 'arcnet' ? 'ARCNET node (0–255)' : subnet?.networkType === 'bacnet-sc' ? 'BACnet/SC node IP' : 'IP address';
 }
 function displayAddress(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
   if (!address.ip) return subnet?.networkType === 'mstp' ? 'MAC not set' : subnet?.networkType === 'arcnet' ? 'Node not set' : 'IP not set';
   return subnet?.networkType === 'mstp' ? `MAC ${address.ip}` : subnet?.networkType === 'arcnet' ? `Node ${address.ip}` : address.ip;
 }
+function scHubsFor(networkId: string) { return project.value.infrastructure.filter(item => (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') && item.subnetIds.includes(networkId)); }
+function otherScHubs(id: string) { return project.value.infrastructure.filter(item => item.id !== id && (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster')); }
+function deviceScNetworkIds(device: DiagramDevice) { return [...new Set(allAddresses(device).map(address => project.value.subnets.find(item => item.id === address.subnetId)).filter((network): network is DiagramSubnet => network?.networkType === 'bacnet-sc').map(network => network.id))]; }
+function scHubsForDevice(device: DiagramDevice) { const networkIds = new Set(deviceScNetworkIds(device)); return project.value.infrastructure.filter(item => (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') && item.subnetIds.some(id => networkIds.has(id))); }
+function assignedHubName(device: DiagramDevice) { return project.value.infrastructure.find(item => item.id === device.scHubId)?.name || 'HUB UNASSIGNED'; }
 function addressEntryClass(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
   const state = addressState(address, subnet);
@@ -471,13 +508,10 @@ function addressEntryClass(address: DiagramDeviceAddress) {
 }
 function allAddresses(device: DiagramDevice) { return device.nics.flatMap(nic => nic.addresses); }
 function addressCount(device: DiagramDevice) { return allAddresses(device).length; }
-function primaryAddress(device: DiagramDevice) { return device.nics[0]?.addresses[0]; }
-function hostAddressSummary(device: DiagramDevice) {
-  const address = primaryAddress(device);
-  if (!address) return 'No addresses configured';
-  const nicName = device.nics[0]?.name || 'NIC';
-  return `${nicName}: ${displayAddress(address)}${addressCount(device) > 1 ? `  +${addressCount(device) - 1} more` : ''}`;
-}
+function hostAddressRows(device: DiagramDevice) { return device.nics.flatMap(nic => nic.addresses.map(address => {
+  const network = project.value.subnets.find(item => item.id === address.subnetId);
+  return { id: address.id, label: `${nic.name || 'NIC'} · ${address.label || 'Address'} · ${network?.name || 'No network'}`, address: displayAddress(address), color: network?.color || '#64748b' };
+})); }
 function subnetAddressCount(subnetId: string) {
   return hostNodes.value.reduce((total, host) => total + allAddresses(host.device).filter(address => address.subnetId === subnetId).length, 0);
 }
@@ -489,10 +523,10 @@ function clipped(value: string, length: number) { return value.length > length ?
 function deviceSymbol(kind: DeviceKind) { return kind === 'controller' ? 'C' : kind === 'workstation' ? 'W' : kind === 'server' ? 'S' : kind === 'sensor' ? '•' : '?'; }
 function rowX(index: number, count: number) { return canvasWidth.value * (index + 1) / (count + 1) - subnetWidth / 2; }
 function networkX(subnet: DiagramSubnet) {
-  const row = subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldSegments.value : ipSubnets.value;
+  const row = subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldSegments.value : routedNetworks.value;
   return rowX(row.findIndex(item => item.id === subnet.id), row.length);
 }
-function networkY(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldBusY : subnetY; }
+function networkY(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldBusY.value : subnetY; }
 function networkCenter(id: string) { const subnet = project.value.subnets.find(item => item.id === id); return subnet ? networkX(subnet) + subnetWidth / 2 : 0; }
 function subnetCenter(id: string) { return networkCenter(id); }
 function hostRow(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostNodes.value : ipHostNodes.value; }
@@ -501,7 +535,7 @@ function hostX(host: HostNode, fallbackIndex = 0) {
   const index = row.findIndex(item => item.device.id === host.device.id);
   return canvasWidth.value * ((index < 0 ? fallbackIndex : index) + 1) / (row.length + 1) - hostWidth / 2;
 }
-function hostYFor(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostY : ipHostY; }
+function hostYFor(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostY.value : ipHostY; }
 function routingDevicesFor(segment: DiagramSubnet) {
   return hostNodes.value.flatMap(host => host.device.nics.flatMap(nic => nic.addresses
     .filter(address => address.subnetId === segment.upstreamSubnetId)
@@ -521,10 +555,10 @@ function fieldBusRoutePath(segment: DiagramSubnet) {
   if (!segment.upstreamSubnetId) return '';
   const routerHost = ipHostNodes.value.find(host => host.device.id === segment.routerId);
   const startX = routerHost ? hostX(routerHost) + hostWidth / 2 : networkCenter(segment.upstreamSubnetId);
-  const startY = routerHost ? ipHostY + hostHeight : subnetY + subnetHeight;
+  const startY = routerHost ? ipHostY + hostHeight.value : subnetY + subnetHeight;
   const endX = networkCenter(segment.id);
-  const laneY = fieldBusY - 28;
-  return `M ${startX} ${startY} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${fieldBusY}`;
+  const laneY = fieldBusY.value - 28;
+  return `M ${startX} ${startY} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${fieldBusY.value}`;
 }
 function routerName(id: string) { return hostNodes.value.find(host => host.device.id === id)?.device.name || 'Unassigned router'; }
 
@@ -562,7 +596,7 @@ function endpointPoint(endpointId: string): DiagramPoint | null {
     const addresses = allAddresses(resolved.host.device);
     const addressIndex = addresses.findIndex(address => address.id === endpointId);
     const offset = (addressIndex - (addresses.length - 1) / 2) * 12;
-    return { x: hostX(resolved.host, resolved.hostIndex) + hostWidth / 2 + offset, y: hostYFor(resolved.host) + hostHeight };
+    return { x: hostX(resolved.host, resolved.hostIndex) + hostWidth / 2 + offset, y: hostYFor(resolved.host) + hostHeight.value };
   }
   return null;
 }
@@ -715,7 +749,7 @@ async function openJson(event: Event) {
 </script>
 
 <style>
-.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2.5}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2.5}.address-endpoint{stroke:#121212;stroke-width:1}.address-link-label{font:9px monospace;fill:#cbd5e1;paint-order:stroke;stroke:#121212;stroke-width:4px;stroke-linejoin:round}.test-path{fill:none;stroke-width:4;opacity:.9}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:9 6}.test-path-label-bg.success{fill:#0d3823;stroke:#14ae5c}.test-path-label-bg.failure{fill:#3d1719;stroke:#df1219}.test-path-label{font:700 9px Inter,Arial,sans-serif}.test-path-label.success{fill:#86efac}.test-path-label.failure{fill:#fca5a5}
+.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2.5}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2.5}.address-endpoint{stroke:#121212;stroke-width:1}.address-link-label{font:9px monospace;fill:#cbd5e1;paint-order:stroke;stroke:#121212;stroke-width:4px;stroke-linejoin:round}.test-path{fill:none;stroke-width:4;opacity:.9}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:9 6}.test-path-label-bg.success{fill:#0d3823;stroke:#14ae5c}.test-path-label-bg.failure{fill:#3d1719;stroke:#df1219}.test-path-label{font:700 9px Inter,Arial,sans-serif}.test-path-label.success{fill:#86efac}.test-path-label.failure{fill:#fca5a5}
 .connection{stroke-width:2;stroke-linejoin:round}.address-link{stroke-width:2}.test-path{stroke-width:2.75;opacity:.78}.test-path.failure{stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-text{font:600 9px Inter,Arial,sans-serif;fill:#cbd5e1}
 .path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}
 </style>
