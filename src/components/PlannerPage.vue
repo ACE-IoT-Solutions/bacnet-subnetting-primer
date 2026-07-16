@@ -27,6 +27,7 @@
           <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
             <h3 style="font-family: var(--font-heading); font-size: 1.15rem; color: #fff; margin: 0;">Configured Networks</h3>
             <AceToggle v-model="splitHorizon" label="Split horizon routing" />
+            <AceToggle v-model="advancedBacnetPorts" label="Advanced BACnet/IP ports" description="Configure multiple B/IP networks on one IP subnet" />
           </div>
           <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
             <AppButton variant="primary" @click="addNetwork('bacnet-ip')" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
@@ -37,7 +38,6 @@
             </AppButton>
             <AppButton variant="secondary" size="sm" @click="addNetwork('mstp')" style="flex: none; min-width: auto;">+ MS/TP segment</AppButton>
             <AppButton variant="secondary" size="sm" @click="addNetwork('arcnet')" style="flex: none; min-width: auto;">+ ARCNET segment</AppButton>
-            <AppButton variant="secondary" size="sm" @click="addNetwork('bacnet-sc')" style="flex: none; min-width: auto;">+ BACnet/SC network</AppButton>
 
             <!-- Secondary Action: Quick Setup Wizard (Blue) -->
             <AppButton variant="secondary" @click="showWizard = true" style="flex: none; min-width: auto; height: 38px; padding: 0 1.25rem; font-size: 0.85rem; border-radius: var(--radius-md);">
@@ -72,7 +72,7 @@
             <div class="form-group" style="margin: 0 0 0.8rem; max-width: 240px;">
               <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Datalink type</label>
               <select v-model="sub.networkType" @change="handleNetworkTypeChange(sub)" style="width: 100%; padding: 0.4rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm);">
-                <option value="bacnet-ip">BACnet/IP</option><option value="bacnet-sc">BACnet/SC</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option>
+                <option value="bacnet-ip">IP subnet</option><option value="mstp">BACnet MS/TP</option><option value="arcnet">BACnet ARCNET</option>
               </select>
             </div>
             <div v-if="isIpNetwork(sub)" class="planner-card-grid">
@@ -94,9 +94,13 @@
                     <input type="number" v-model.number="sub.vlan" min="1" max="4094" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="e.g. 10">
                   </div>
 
-                  <div class="form-group" style="margin-bottom: 0; flex: 1;">
+                  <div v-if="advancedBacnetPorts" class="form-group" style="margin-bottom: 0; flex: 1;">
                     <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">BACnet Port</label>
                     <input type="number" v-model.number="sub.port" min="1024" max="65535" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="47808">
+                  </div>
+                  <div v-if="advancedBacnetPorts" class="form-group" style="margin-bottom: 0; flex: 1;">
+                    <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">BACnet Network</label>
+                    <input type="number" v-model.number="sub.bacnetNetworkNumber" min="1" max="65534" style="width: 100%; padding: 0.35rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: var(--radius-sm); font-size: 0.82rem;" placeholder="1001">
                   </div>
                 </div>
 
@@ -146,6 +150,7 @@
 
                 <div v-if="sub.bmsPlaced" style="margin-left: 1.25rem; margin-top: 0.2rem;">
                   <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">BMS IP: <strong style="color: #fff;">{{ getOffsetIp(sub.ip, sub.cidr, getBmsHostOffset(sub)) || 'Invalid' }}</strong> (.{{ getBmsHostOffset(sub) }})</span>
+                  <div class="device-service-selection"><AceCheckbox :model-value="Boolean(sub.bmsUsesBacnetIp)" label="BACnet/IP" @update:model-value="sub.bmsUsesBacnetIp = $event" /><AceCheckbox :model-value="Boolean(sub.bmsUsesBacnetSc)" label="BACnet/SC" @update:model-value="sub.bmsUsesBacnetSc = $event" /></div>
                   <span v-if="sub.bmsRole === 'bbmd'" class="field-hint">The BMS owns the configured BBMD address.</span>
 
                   <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.15rem;">BMS Network Role:</label>
@@ -167,6 +172,14 @@
                     </label>
                   </div>
                   <div v-if="otherBbmdSubnets(sub).length === 0" style="font-size: 0.72rem; color: var(--text-muted);">No other BBMD routers found.</div>
+                </div>
+                <AceToggle :model-value="Boolean(sub.scEnabled)" label="Provide BACnet/SC hub infrastructure" description="Devices on this IP subnet may independently use BACnet/IP, BACnet/SC, or both" @update:model-value="sub.scEnabled = $event" />
+                <div v-if="sub.scEnabled" class="planner-sc-inline">
+                  <div class="form-group"><label>Hub name</label><input v-model="sub.scPrimaryHubName" type="text" placeholder="Primary SC Hub"></div>
+                  <div class="form-group"><label>Hub IP</label><input v-model="sub.scPrimaryHubIp" type="text" placeholder="10.20.0.10"></div>
+                  <div class="form-group"><label>Hub WebSocket URI</label><input v-model="sub.scPrimaryHubUri" type="text" placeholder="wss://sc-hub.example.com"></div>
+                  <AceToggle :model-value="Boolean(sub.scFailoverEnabled)" label="High-availability hub pair" @update:model-value="sub.scFailoverEnabled = $event" />
+                  <template v-if="sub.scFailoverEnabled"><div class="form-group"><label>Failover hub IP</label><input v-model="sub.scFailoverHubIp" type="text"></div><div class="form-group"><label>Failover hub URI</label><input v-model="sub.scFailoverHubUri" type="text" placeholder="wss://sc-failover.example.com"></div></template>
                 </div>
               </div>
             </div>
@@ -370,7 +383,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, inject, type Ref } from 'vue';
 import { PlannerSubnet } from '../lib/planner';
 import { getSubnetDetails, getOffsetIp, ipToLong, longToIp } from '../lib/subnet';
 import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, getBmsHostOffset, isIpNetwork } from '../lib/planner';
@@ -381,6 +394,7 @@ import AceCheckbox from './AceCheckbox.vue';
 import AceToggle from './AceToggle.vue';
 
 const splitHorizon = ref(false);
+const advancedBacnetPorts = inject<Ref<boolean>>('advancedBacnetPorts', ref(false));
 const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 
 const DEFAULT_SUBNETS: PlannerSubnet[] = [
@@ -442,10 +456,22 @@ const normalizeNetwork = (sub: PlannerSubnet) => Object.assign(sub, {
   networkType: sub.networkType || 'bacnet-ip', bacnetNetworkNumber: sub.bacnetNetworkNumber ?? '',
   mstpBaudRate: sub.mstpBaudRate ?? 38400, mstpMaxMaster: sub.mstpMaxMaster ?? 127, arcnetDataRate: sub.arcnetDataRate ?? 2500,
   upstreamIpSubnetId: sub.upstreamIpSubnetId ?? '', routerName: sub.routerName ?? '', routerIp: sub.routerIp ?? '',
-  scPrimaryHubName: sub.scPrimaryHubName ?? '', scPrimaryHubIp: sub.scPrimaryHubIp ?? '', scPrimaryHubUri: sub.scPrimaryHubUri ?? '',
+  bmsUsesBacnetIp: sub.bmsUsesBacnetIp ?? true, bmsUsesBacnetSc: sub.bmsUsesBacnetSc ?? false,
+  scEnabled: sub.scEnabled ?? sub.networkType === 'bacnet-sc', scPrimaryHubName: sub.scPrimaryHubName ?? '', scPrimaryHubIp: sub.scPrimaryHubIp ?? '', scPrimaryHubUri: sub.scPrimaryHubUri ?? '',
   scFailoverEnabled: sub.scFailoverEnabled ?? false, scFailoverHubName: sub.scFailoverHubName ?? '', scFailoverHubIp: sub.scFailoverHubIp ?? '',
   scFailoverHubUri: sub.scFailoverHubUri ?? '', scUnderlaySubnetIds: sub.scUnderlaySubnetIds ?? []
 });
+const migrateLegacyScNetworks = (networks: PlannerSubnet[]) => {
+  for (const legacy of networks.filter(network => network.networkType === 'bacnet-sc')) {
+    const underlay = networks.find(network => legacy.scUnderlaySubnetIds?.includes(network.id) && isIpNetwork(network));
+    if (!underlay) continue;
+    Object.assign(underlay, {
+      scEnabled: true, scPrimaryHubName: legacy.scPrimaryHubName, scPrimaryHubIp: legacy.scPrimaryHubIp, scPrimaryHubUri: legacy.scPrimaryHubUri,
+      scFailoverEnabled: legacy.scFailoverEnabled, scFailoverHubName: legacy.scFailoverHubName, scFailoverHubIp: legacy.scFailoverHubIp, scFailoverHubUri: legacy.scFailoverHubUri
+    });
+  }
+  return networks.filter(network => network.networkType !== 'bacnet-sc' || !network.scUnderlaySubnetIds?.some(id => networks.some(candidate => candidate.id === id && isIpNetwork(candidate))));
+};
 const ipSubnets = computed(() => subnets.value.filter(isIpNetwork));
 const upstreamNetworkOptions = (sub: PlannerSubnet) => subnets.value.filter(candidate => candidate.id !== sub.id
   && (isIpNetwork(candidate) || candidate.networkType === sub.networkType));
@@ -475,7 +501,7 @@ onMounted(() => {
 
   if (savedSubnets) {
     try {
-      subnets.value = JSON.parse(savedSubnets).map(normalizeNetwork);
+      subnets.value = migrateLegacyScNetworks(JSON.parse(savedSubnets).map(normalizeNetwork));
     } catch (e) {
       console.error("Failed to parse saved subnets", e);
     }
@@ -521,11 +547,12 @@ const addNetwork = (networkType: 'bacnet-ip' | 'bacnet-sc' | 'mstp' | 'arcnet') 
     bbmdOffset: 10,
     bmsPlaced: false,
     bmsRole: 'none',
+    bmsUsesBacnetIp: true, bmsUsesBacnetSc: false,
     fdrTargetSubnetId: '',
     plannedDevices: 0,
     routeTargets: [], networkType, bacnetNetworkNumber: networkType === 'bacnet-ip' ? '' : 2000 + serialCount + 1, mstpBaudRate: 38400, mstpMaxMaster: 127, arcnetDataRate: 2500,
     upstreamIpSubnetId: networkType === 'mstp' || networkType === 'arcnet' ? upstream?.id || '' : '', routerName: '', routerIp: '',
-    scPrimaryHubName: networkType === 'bacnet-sc' ? 'Primary SC Hub' : '', scPrimaryHubIp: '', scPrimaryHubUri: '', scFailoverEnabled: false,
+    scEnabled: false, scPrimaryHubName: '', scPrimaryHubIp: '', scPrimaryHubUri: '', scFailoverEnabled: false,
     scFailoverHubName: '', scFailoverHubIp: '', scFailoverHubUri: '', scUnderlaySubnetIds: networkType === 'bacnet-sc' && upstream ? [upstream.id] : []
   });
 };
@@ -695,6 +722,14 @@ const validationAlerts = computed<ValidationAlert[]>(() => {
     }
     const details1 = getSubnetDetails(s1.ip, s1.cidr);
     if (!details1) continue;
+    if (s1.scEnabled) {
+      if (!s1.scPrimaryHubName?.trim()) alerts.push({ type: 'error', text: `IP subnet "${s1.name}" enables BACnet/SC but has no hub name.` });
+      if (!s1.scPrimaryHubIp?.trim() || ipToLong(s1.scPrimaryHubIp) === null) alerts.push({ type: 'error', text: `BACnet/SC hub on "${s1.name}" needs a valid IP.` });
+      if (!s1.scPrimaryHubUri?.startsWith('wss://')) alerts.push({ type: 'error', text: `BACnet/SC hub on "${s1.name}" needs a wss:// URI.` });
+      if (s1.scFailoverEnabled && (!s1.scFailoverHubIp?.trim() || ipToLong(s1.scFailoverHubIp) === null || !s1.scFailoverHubUri?.startsWith('wss://'))) alerts.push({ type: 'error', text: `BACnet/SC HA infrastructure on "${s1.name}" needs a valid failover IP and wss:// URI.` });
+    }
+    if (s1.bmsPlaced && s1.bmsUsesBacnetSc && !s1.scEnabled) alerts.push({ type: 'error', text: `BMS on "${s1.name}" uses BACnet/SC but no SC hub infrastructure is configured on that IP network.` });
+    if (s1.bmsPlaced && !s1.bmsUsesBacnetIp && !s1.bmsUsesBacnetSc) alerts.push({ type: 'warning', text: `BMS on "${s1.name}" has no BACnet service selected.` });
 
     // Capacity warning (> 500 usable IPs)
     if (details1.numHosts > 500) {
@@ -724,6 +759,14 @@ const validationAlerts = computed<ValidationAlert[]>(() => {
             }
           }
         });
+      }
+      const rangesOverlap = details1.networkLong <= details2.broadcastLong && details2.networkLong <= details1.broadcastLong;
+      if (advancedBacnetPorts.value && rangesOverlap && s1.vlan === s2.vlan && (s1.port || 47808) !== (s2.port || 47808)) {
+        const firstNetwork = Number(s1.bacnetNetworkNumber);
+        const secondNetwork = Number(s2.bacnetNetworkNumber);
+        if (!Number.isInteger(firstNetwork) || firstNetwork < 1 || firstNetwork > 65534 || !Number.isInteger(secondNetwork) || secondNetwork < 1 || secondNetwork > 65534 || firstNetwork === secondNetwork) {
+          alerts.push({ type: 'error', text: `Port-separated B/IP networks "${s1.name}" and "${s2.name}" need distinct BACnet network numbers from 1–65534.` });
+        }
       }
     }
   }

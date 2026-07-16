@@ -14,6 +14,7 @@
           <option value="same-subnet">Standard Same Subnet (Working)</option>
           <option value="isolated-subnets">Separate Subnets (Requires BBMD)</option>
           <option value="overlapping-asym">Asymmetrical Subnet Overlap</option>
+          <option value="multi-port">Same IP Subnet, Separate BACnet Ports</option>
         </select>
       </div>
 
@@ -24,6 +25,7 @@
           <label>IP Address</label>
           <input type="text" v-model="devAIp" :style="{ borderColor: isIpValid(devAIp) ? '' : 'var(--error)' }" placeholder="e.g. 192.168.0.5">
         </div>
+        <div class="form-group"><label>BACnet/IP UDP Port</label><input v-model.number="devAPort" type="number" min="1" max="65535"></div>
         <div class="form-group">
           <label>Subnet Mask</label>
           <div class="input-row">
@@ -51,6 +53,7 @@
             </select>
           </div>
         </div>
+        <div class="form-group"><label>BACnet/IP UDP Port</label><input v-model.number="devBPort" type="number" min="1" max="65535"></div>
       </div>
 
       <!-- BBMD Infrastructure Configuration Panel -->
@@ -211,7 +214,7 @@
             <rect x="40" y="120" width="120" height="65" rx="8"></rect>
             <use href="#ace-sim-device" class="sim-node-icon" x="50" y="130" width="22" height="22" />
             <text x="110" y="142" class="node-label">Device A</text>
-            <text x="100" y="158" class="node-ip">{{ devAIp }}</text>
+            <text x="100" y="158" class="node-ip">{{ devAIp }}:{{ devAPort }}</text>
             <text x="100" y="172" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">/{{ devACidr }}</text>
           </g>
 
@@ -220,7 +223,7 @@
             <rect x="640" y="120" width="120" height="65" rx="8"></rect>
             <use href="#ace-sim-device" class="sim-node-icon secondary" x="650" y="130" width="22" height="22" />
             <text x="710" y="142" class="node-label">Device B</text>
-            <text x="700" y="158" class="node-ip">{{ devBIp }}</text>
+            <text x="700" y="158" class="node-ip">{{ devBIp }}:{{ devBPort }}</text>
             <text x="700" y="172" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">/{{ devBCidr }}</text>
           </g>
 
@@ -295,10 +298,11 @@ import {
 
 // Presets definitions
 const presets = {
-  'direct-trap': { ipA: '192.168.0.5', cidrA: 23, ipB: '192.168.1.6', cidrB: 24 },
-  'same-subnet': { ipA: '192.168.1.50', cidrA: 24, ipB: '192.168.1.60', cidrB: 24 },
-  'isolated-subnets': { ipA: '192.168.1.50', cidrA: 24, ipB: '192.168.2.60', cidrB: 24 },
-  'overlapping-asym': { ipA: '192.168.0.50', cidrA: 23, ipB: '192.168.1.60', cidrB: 24 }
+  'direct-trap': { ipA: '192.168.0.5', cidrA: 23, ipB: '192.168.1.6', cidrB: 24, portA: 47808, portB: 47808 },
+  'same-subnet': { ipA: '192.168.1.50', cidrA: 24, ipB: '192.168.1.60', cidrB: 24, portA: 47808, portB: 47808 },
+  'isolated-subnets': { ipA: '192.168.1.50', cidrA: 24, ipB: '192.168.2.60', cidrB: 24, portA: 47808, portB: 47808 },
+  'overlapping-asym': { ipA: '192.168.0.50', cidrA: 23, ipB: '192.168.1.60', cidrB: 24, portA: 47808, portB: 47808 },
+  'multi-port': { ipA: '192.168.1.50', cidrA: 24, ipB: '192.168.1.60', cidrB: 24, portA: 47808, portB: 47809 }
 };
 
 const selectedPreset = ref<keyof typeof presets>('direct-trap');
@@ -307,11 +311,13 @@ const selectedPreset = ref<keyof typeof presets>('direct-trap');
 const devAIp = ref('192.168.0.5');
 const devAMask = ref('255.255.254.0');
 const devACidr = ref(23);
+const devAPort = ref(47808);
 
 // Device B Inputs
 const devBIp = ref('192.168.1.6');
 const devBMask = ref('255.255.255.0');
 const devBCidr = ref(24);
+const devBPort = ref(47808);
 
 // BBMD Configs
 const bbmdEnabled = ref(false);
@@ -353,6 +359,8 @@ const loadPreset = () => {
     devACidr.value = p.cidrA;
     devAMask.value = longToIp(cidrToMask(p.cidrA));
     devBIp.value = p.ipB;
+    devAPort.value = p.portA;
+    devBPort.value = p.portB;
     devBCidr.value = p.cidrB;
     devBMask.value = longToIp(cidrToMask(p.cidrB));
   }
@@ -386,7 +394,14 @@ const verdict = computed(() => {
   const dB = detailsB.value;
   if (!r || !dA || !dB) return null;
 
-  if (r.sameSubnet) {
+  if (r.sameSubnet && devAPort.value !== devBPort.value) {
+    return {
+      class: 'verdict-warning',
+      title: 'Same IP Subnet, Separate BACnet/IP Networks',
+      icon: `<path d="M4 7h16M4 12h16M4 17h16"></path>`,
+      body: `Both devices share ${dA.network}/${dA.cidr}, but Device A listens on UDP ${devAPort.value} and Device B listens on UDP ${devBPort.value}. Their local broadcasts use the same IPv4 broadcast address with different UDP destination ports, so they are separate B/IP datalinks. Communication between their BACnet network numbers requires a BACnet router with a port on each B/IP network; changing only an IP router or subnet mask does not join them.`
+    };
+  } else if (r.sameSubnet) {
     return {
       class: 'verdict-success',
       title: 'Subnets Match: Direct BACnet/IP Enabled',
@@ -525,7 +540,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
 
   try {
     if (type === 'bcast-a') {
-      logToConsole(`[Device A] Sending Who-Is (Broadcast) on port 47808`, 'info');
+      logToConsole(`[Device A] Sending Who-Is (Broadcast) on UDP ${devAPort.value}`, 'info');
       logToConsole(`[Device A] Target Broadcast address: ${dA.broadcast}`, 'info');
 
       await animatePacket(coords.devA, coords.swA, 'Who-Is (BC)');
@@ -533,6 +548,11 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
 
       if (r.sameSubnet) {
         await animatePacket(coords.swA, coords.devB, 'Who-Is (BC)');
+        if (devAPort.value !== devBPort.value) {
+          logToConsole(`[Device B] IP stack receives the Ethernet/IP broadcast, but no BACnet service is listening on UDP ${devAPort.value}. Device B belongs to the UDP ${devBPort.value} B/IP network.`, 'warning');
+          logToConsole(`[Device A] TIMEOUT. A BACnet router attached to both B/IP ports is required to cross between the BACnet networks.`, 'error');
+          return;
+        }
 
         if (bcastIam.value) {
           logToConsole(`[Device B] Received Who-Is. Generating I-Am broadcast response to target ${dB.broadcast}`, 'success');
@@ -606,7 +626,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
         ]);
         logToConsole(`[Router] Dropped broadcast.`, 'error');
 
-        logToConsole(`[Device B] Received broadcast frame on port 47808.`, 'warning');
+        logToConsole(`[Device B] Received broadcast frame on UDP ${devAPort.value}.`, 'warning');
         logToConsole(`[Device B] This simulation rejects destination ${dA.broadcast}; B is configured to use ${dB.broadcast}.`, 'error');
         logToConsole(`[Device B] No response is generated under the modeled receive policy.`, 'error');
         logToConsole(`[Device A] TIMEOUT. Discovery failed.`, 'error');
@@ -681,7 +701,7 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
       }
     }
     else if (type === 'bcast-b') {
-      logToConsole(`[Device B] Sending Who-Is (Broadcast) on port 47808`, 'info');
+      logToConsole(`[Device B] Sending Who-Is (Broadcast) on UDP ${devBPort.value}`, 'info');
       logToConsole(`[Device B] Target Broadcast address: ${dB.broadcast}`, 'info');
 
       if (r.sameSubnet || r.broadcastIntersectionTrap || r.asymmetricalSubnet || r.overlappingSubnet) {
@@ -694,8 +714,14 @@ const runSimulation = async (type: 'bcast-a' | 'bcast-b' | 'unicast-a-b' | 'unic
         ]);
         logToConsole(`[Router] Dropped broadcast.`, 'error');
 
+        if (r.sameSubnet && devAPort.value !== devBPort.value) {
+          logToConsole(`[Device A] IP stack receives the frame, but no BACnet service is listening on UDP ${devBPort.value}; A is configured for UDP ${devAPort.value}.`, 'warning');
+          logToConsole(`[Device B] TIMEOUT. The two UDP ports identify separate B/IP datalinks.`, 'error');
+          return;
+        }
+
         if (r.overlappingSubnet) {
-          logToConsole(`[Device A] Received broadcast frame on port 47808.`, 'warning');
+          logToConsole(`[Device A] Received broadcast frame on UDP ${devBPort.value}.`, 'warning');
           logToConsole(`[Device A] This simulation rejects destination ${dB.broadcast}; A is configured to use ${dA.broadcast}.`, 'error');
           logToConsole(`[Device A] No response is generated under the modeled receive policy.`, 'error');
           logToConsole(`[Device B] TIMEOUT. Discovery failed.`, 'error');

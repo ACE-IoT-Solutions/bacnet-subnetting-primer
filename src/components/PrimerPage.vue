@@ -755,6 +755,23 @@
       </div>
     </div>
 
+    <div class="glass-card">
+      <h3 class="card-title">8. Multiple BACnet/IP Networks on One IP Subnet</h3>
+      <p>BACnet/IP uses UDP <code>47808</code> (<code>0xBAC0</code>) by default, but a B/IP datalink may be configured for another UDP port. Sites sometimes place several distinct BACnet network numbers on the same IPv4 subnet and VLAN by assigning a different UDP port to each B/IP network—for example 47808, 47809, and 47810.</p>
+      <div class="multi-port-primer-grid">
+        <article><span class="port-badge">UDP 47808</span><strong>B/IP Network 1001</strong><small>192.168.50.0/24 · broadcast 192.168.50.255:47808</small></article>
+        <article><span class="port-badge">UDP 47809</span><strong>B/IP Network 1002</strong><small>192.168.50.0/24 · broadcast 192.168.50.255:47809</small></article>
+        <article><span class="port-badge">UDP 47810</span><strong>B/IP Network 1003</strong><small>192.168.50.0/24 · broadcast 192.168.50.255:47810</small></article>
+      </div>
+      <div class="standards-explanation-grid">
+        <div><h4>What remains shared</h4><p>The devices share Ethernet, VLAN membership, IP addressing, mask, gateway, and IPv4 broadcast address. A packet can reach every host’s IP stack while only the BACnet process bound to the destination UDP port accepts the BVLL message.</p></div>
+        <div><h4>What is separate</h4><p>Each UDP port represents a separate B/IP datalink. Give each one a distinct BACnet network number. Devices on different ports do not discover or communicate directly merely because their IP addresses are on-link.</p></div>
+        <div><h4>How traffic crosses</h4><p>Use a BACnet router with a logical port on each B/IP network. The router needs the port to determine the incoming datalink and add the correct source network information when routing the NPDU.</p></div>
+      </div>
+      <div class="failure-causes"><strong>Common failure modes</strong><ul><li>A workstation scans only UDP 47808 and appears to miss devices on 47809 or 47810.</li><li>A BBMD, BDT/FDT entry, firewall rule, NAT rule, or packet capture filter is configured for the wrong UDP port.</li><li>Two logical B/IP networks reuse the same UDP port on the same IP/VLAN range, so traffic is no longer cleanly separated.</li><li>No BACnet router joins the distinct BACnet network numbers, or the router has only one of the required B/IP ports configured.</li><li>Wireshark does not automatically decode a non-default port as BVLL until that port is included in capture/display handling or decoded as BACnet.</li></ul></div>
+      <aside class="standards-note"><strong>Standards and design basis</strong><span>Annex J permits a configured UDP port other than 47808. BACnet Committee routing guidance shows a router directly connected to multiple B/IP networks using a UDP port unique to each network.</span><a href="https://bacnet.org/wp-content/uploads/sites/4/2022/06/Building-Wide-Area-Networks-With-BACnet-Part-2.pdf" target="_blank" rel="noreferrer">BACnet/IP default and configurable port</a><a href="https://bacnet.org/wp-content/uploads/sites/4/2022/06/BACnet_IP-21-Routing.pdf" target="_blank" rel="noreferrer">Routing between B/IP networks</a></aside>
+    </div>
+
   </div>
 </template>
 

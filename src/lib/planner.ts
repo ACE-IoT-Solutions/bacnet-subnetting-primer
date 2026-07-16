@@ -7,11 +7,13 @@ export interface PlannerSubnet {
   cidr: number;
   gatewayOffset: number;
   vlan: number | '';
-  port: number;
+  port: number | '';
   bbmdEnabled: boolean;
   bbmdOffset: number;
   bmsPlaced: boolean;
   bmsRole: 'none' | 'bbmd' | 'fdr';
+  bmsUsesBacnetIp?: boolean;
+  bmsUsesBacnetSc?: boolean;
   fdrTargetSubnetId: string;
   plannedDevices?: number;
   routeTargets?: string[];
@@ -24,6 +26,7 @@ export interface PlannerSubnet {
   routerName?: string;
   routerIp?: string;
   scPrimaryHubName?: string;
+  scEnabled?: boolean;
   scPrimaryHubIp?: string;
   scPrimaryHubUri?: string;
   scFailoverEnabled?: boolean;

@@ -7,6 +7,7 @@ This is designed for control engineers, network integrators, and building automa
 ## Features
 
 - **Interactive Subnet Calculator:** Compute Network ID, Broadcast IP, usable range, and host count for two devices simultaneously.
+- **Port-Separated BACnet/IP Networks:** Model multiple BACnet/IP network numbers on one IP subnet using distinct UDP ports, with an always-available calculator scenario and advanced planner/diagram controls.
 - **Dynamic Binary Breakdown:** Visualizes IP address structures in binary, highlighting the dividing line between network and host bits.
 - **Verdict & Trap Analyzer:** Automatically identifies misconfigurations, such as:
   - **Broadcast Intersection Traps:** (e.g. Device A: `192.168.0.5/23` & Device B: `192.168.1.6/24`) sharing a broadcast address but belonging to different logical subnets.

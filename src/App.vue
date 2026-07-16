@@ -92,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide, onMounted, onUnmounted } from 'vue';
+import { ref, provide, onMounted, onUnmounted, watch } from 'vue';
 import CalculatorPage from './components/CalculatorPage.vue';
 import PrimerPage from './components/PrimerPage.vue';
 import PlannerPage from './components/PlannerPage.vue';
@@ -107,6 +107,7 @@ interface LogEntry {
 
 type AppTab = 'calculator' | 'primer' | 'planner' | 'diagram';
 const activeTab = ref<AppTab>('calculator');
+const advancedBacnetPorts = ref(localStorage.getItem('ace-advanced-bacnet-ports') === 'true');
 
 // Synchronize hash to activeTab
 const updateTabFromHash = () => {
@@ -168,6 +169,9 @@ const clearConsole = () => {
 
 provide('logs', logs);
 provide('logToConsole', logToConsole);
+provide('advancedBacnetPorts', advancedBacnetPorts);
+
+watch(advancedBacnetPorts, value => localStorage.setItem('ace-advanced-bacnet-ports', String(value)));
 provide('clearConsole', clearConsole);
 </script>
 

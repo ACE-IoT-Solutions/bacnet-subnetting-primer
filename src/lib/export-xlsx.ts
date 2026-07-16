@@ -201,6 +201,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
           bmsRole = `FDR (Registered to BBMD on ${targetSub ? targetSub.name : 'Unknown'})`;
         } else bmsRole = "Local Subnet Only";
       }
+      if (ipNetwork && sub.scEnabled) bmsRole = `${bmsRole === 'None' ? '' : `${bmsRole}; `}SC ${sub.scFailoverEnabled ? 'HA hub pair' : 'hub'}: ${sub.scPrimaryHubName || 'not set'}`;
 
       const rowStyle = (offset % 2 === 0) ? "dataCell" : "dataCellAlt";
 
@@ -360,7 +361,9 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
         ["VLAN ID", sub.vlan || 'None'],
         ["BACnet UDP Port", sub.port || 47808],
         ["Default Gateway IP", gatewayIp],
-        ["BBMD IP Address", bbmdIp]
+        ["BBMD IP Address", bbmdIp],
+        ["BACnet/SC Infrastructure", sub.scEnabled ? `${sub.scPrimaryHubName || 'Not set'} · ${sub.scPrimaryHubIp || 'IP not set'} · ${sub.scPrimaryHubUri || 'URI not set'}` : 'Not configured'],
+        ["BACnet/SC Failover", sub.scEnabled && sub.scFailoverEnabled ? `${sub.scFailoverHubIp || 'IP not set'} · ${sub.scFailoverHubUri || 'URI not set'}` : 'Not configured']
       ] : sub.networkType === 'bacnet-sc' ? [
         ["Datalink Type", "BACnet/SC"], ["BACnet Network Number", sub.bacnetNetworkNumber || 'Not set'],
         ["Primary Hub", `${sub.scPrimaryHubName || 'Not set'} · ${sub.scPrimaryHubIp || 'IP not set'} · ${sub.scPrimaryHubUri || 'URI not set'}`],

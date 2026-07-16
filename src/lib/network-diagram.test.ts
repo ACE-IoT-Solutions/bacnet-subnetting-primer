@@ -5,6 +5,23 @@ import {
 } from './network-diagram';
 
 describe('network diagram validation', () => {
+  it('supports distinct BACnet/IP networks on one IP subnet when ports and network numbers differ', () => {
+    const project = createDefaultProject();
+    const first = project.subnets[0];
+    first.udpPort = 47808;
+    first.bacnetNetworkNumber = '1001';
+    const second = createSubnet(2);
+    second.address = first.address;
+    second.cidr = first.cidr;
+    second.vlan = first.vlan;
+    second.udpPort = 47809;
+    second.bacnetNetworkNumber = '1002';
+    project.subnets.push(second);
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('require distinct UDP ports'))).toBe(false);
+    second.udpPort = 47808;
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('require distinct UDP ports'))).toBe(true);
+  });
+
   it('recognizes whether a device belongs to its subnet', () => {
     const project = createDefaultProject();
     const subnet = project.subnets[0];
@@ -169,27 +186,22 @@ describe('network diagram validation', () => {
     underlay.name = 'IP Underlay';
     underlay.address = '10.0.0.0';
     underlay.cidr = 8;
-    underlay.devices = [];
-    const scNetwork = createSubnet(2);
-    project.subnets.push(scNetwork);
-    const sc = scNetwork;
-    sc.networkType = 'bacnet-sc';
-    sc.bacnetNetworkNumber = '3001';
-    sc.devices = [createDevice(1, sc.id), createDevice(2, sc.id)];
+    underlay.devices = [createDevice(1, underlay.id), createDevice(2, underlay.id)];
+    underlay.devices.forEach(device => { device.nics[0].bacnetScEnabled = true; device.nics[0].bacnetIpEnabled = false; });
     const primary: DiagramInfrastructure = project.infrastructure[0] = {
       id: 'hub-a', name: 'SC Hub A', kind: 'sc-hub', ip: '10.20.0.10', uri: 'wss://hub-a.example',
-      failoverIp: '', failoverUri: '', subnetIds: [sc.id], underlaySubnetIds: [underlay.id], peerInfrastructureIds: [], notes: ''
+      failoverIp: '', failoverUri: '', subnetIds: [underlay.id], underlaySubnetIds: [underlay.id], peerInfrastructureIds: [], notes: ''
     };
     const secondary: DiagramInfrastructure = project.infrastructure[1] = {
       id: 'hub-b', name: 'SC Hub B', kind: 'sc-hub-cluster', ip: '10.30.0.10', uri: 'wss://hub-b.example',
-      failoverIp: '10.31.0.10', failoverUri: 'wss://hub-b-failover.example', subnetIds: [sc.id], underlaySubnetIds: [underlay.id], peerInfrastructureIds: [], notes: ''
+      failoverIp: '10.31.0.10', failoverUri: 'wss://hub-b-failover.example', subnetIds: [underlay.id], underlaySubnetIds: [underlay.id], peerInfrastructureIds: [], notes: ''
     };
-    sc.devices[0].nics[0].addresses[0].ip = '10.20.0.20';
-    sc.devices[0].scHubId = primary.id;
-    sc.devices[0].scHubL3Reachable = true;
-    sc.devices[1].nics[0].addresses[0].ip = '10.30.0.20';
-    sc.devices[1].scHubId = secondary.id;
-    sc.devices[1].scHubL3Reachable = true;
+    underlay.devices[0].nics[0].addresses[0].ip = '10.20.0.20';
+    underlay.devices[0].nics[0].scHubId = primary.id;
+    underlay.devices[0].nics[0].scHubL3Reachable = true;
+    underlay.devices[1].nics[0].addresses[0].ip = '10.30.0.20';
+    underlay.devices[1].nics[0].scHubId = secondary.id;
+    underlay.devices[1].nics[0].scHubL3Reachable = true;
     expect(getDiagramDiagnostics(project).some(item => item.message.includes('without a modeled hub-to-hub path'))).toBe(true);
     primary.peerInfrastructureIds = [secondary.id];
     secondary.peerInfrastructureIds = [primary.id];
@@ -201,25 +213,22 @@ describe('network diagram validation', () => {
   it('imports planner BACnet/SC hubs as network infrastructure', () => {
     const base = { gatewayOffset: 1, vlan: '' as const, port: 47808, bbmdEnabled: false, bbmdOffset: 10, bmsPlaced: false, bmsRole: 'none' as const, fdrTargetSubnetId: '' };
     const diagram = createDiagramProjectFromPlan([
-      { ...base, id: 'ip', name: 'IP Underlay', ip: '10.0.0.0', cidr: 8, networkType: 'bacnet-ip' },
-      { ...base, id: 'sc', name: 'Secure Campus', ip: '', cidr: 24, networkType: 'bacnet-sc', bacnetNetworkNumber: 3001, scPrimaryHubName: 'Campus Hub', scPrimaryHubIp: '10.0.0.10', scPrimaryHubUri: 'wss://hub.example', scFailoverEnabled: true, scFailoverHubIp: '10.0.1.10', scFailoverHubUri: 'wss://hub-failover.example', scUnderlaySubnetIds: ['ip'] }
+      { ...base, id: 'ip', name: 'IP Underlay', ip: '10.0.0.0', cidr: 8, networkType: 'bacnet-ip', scEnabled: true, scPrimaryHubName: 'Campus Hub', scPrimaryHubIp: '10.0.0.10', scPrimaryHubUri: 'wss://hub.example', scFailoverEnabled: true, scFailoverHubIp: '10.0.1.10', scFailoverHubUri: 'wss://hub-failover.example' }
     ]);
-    expect(diagram.subnets[1].networkType).toBe('bacnet-sc');
+    expect(diagram.subnets).toHaveLength(1);
     expect(diagram.infrastructure[0].kind).toBe('sc-hub-cluster');
-    expect(diagram.infrastructure[0].subnetIds).toEqual([diagram.subnets[1].id]);
+    expect(diagram.infrastructure[0].subnetIds).toEqual([diagram.subnets[0].id]);
     expect(diagram.infrastructure[0].underlaySubnetIds).toEqual([diagram.subnets[0].id]);
     expect(getDiagramDiagnostics(diagram)).toEqual([]);
   });
 
-  it('allows one router device to have BACnet/IP and BACnet/SC ports', () => {
+  it('allows one device to use BACnet/IP and BACnet/SC on the same IP interface', () => {
     const project = createDefaultProject();
     const ip = project.subnets[0];
     const router = ip.devices[0];
-    router.requiredForRouting = true;
-    const sc = createSubnet(2); sc.networkType = 'bacnet-sc'; sc.bacnetNetworkNumber = '3001'; project.subnets.push(sc);
-    const scNic = createNic(sc.id, 2); scNic.addresses[0].ip = '192.168.0.20'; router.nics.push(scNic);
-    const hub: DiagramInfrastructure = { id: 'hub', name: 'SC Hub', kind: 'sc-hub', ip: '192.168.0.10', uri: 'wss://hub.example', failoverIp: '', failoverUri: '', subnetIds: [sc.id], underlaySubnetIds: [ip.id], peerInfrastructureIds: [], notes: '' };
-    project.infrastructure.push(hub); router.scHubId = hub.id; router.scHubL3Reachable = true;
+    router.nics[0].bacnetIpEnabled = true; router.nics[0].bacnetScEnabled = true;
+    const hub: DiagramInfrastructure = { id: 'hub', name: 'SC Hub', kind: 'sc-hub', ip: '192.168.0.10', uri: 'wss://hub.example', failoverIp: '', failoverUri: '', subnetIds: [ip.id], underlaySubnetIds: [ip.id], peerInfrastructureIds: [], notes: '' };
+    project.infrastructure.push(hub); router.nics[0].scHubId = hub.id; router.nics[0].scHubL3Reachable = true;
     expect(getDiagramDiagnostics(project)).toEqual([]);
   });
 });

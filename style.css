@@ -489,6 +489,16 @@ textarea {
   gap: 2rem;
   margin-bottom: 1.5rem;
 }
+.multi-port-primer-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0.75rem; margin: 1rem 0; }
+.multi-port-primer-grid article { display: grid; gap: 0.35rem; padding: 1rem; border: 1px solid var(--ace-border); border-radius: var(--radius-lg); background: var(--ace-bg-elevated); }
+.multi-port-primer-grid strong { font-family: var(--ace-font-heading); }
+.multi-port-primer-grid small { color: var(--ace-text-muted); line-height: 1.45; }
+.port-badge { width: max-content; padding: 0.22rem 0.48rem; border-radius: 999px; background: var(--ace-primary-soft); color: var(--ace-primary); font: 700 0.7rem var(--font-mono); }
+.whois-port-input { flex: 0 0 104px !important; min-width: 0; }
+.device-service-selection { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0.55rem 0; }
+.planner-sc-inline { display: grid; gap: 0.55rem; margin: 0.25rem 0 0 1.25rem; padding: 0.75rem; border: 1px solid rgba(173,252,249,.2); border-radius: var(--radius-md); background: rgba(173,252,249,.04); }
+.planner-sc-inline .form-group { margin: 0; }
+@media (max-width: 760px) { .multi-port-primer-grid { grid-template-columns: 1fr; } }
 
 .diagram-page-heading h2 {
   font-family: var(--font-heading);
