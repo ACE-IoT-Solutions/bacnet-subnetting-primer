@@ -63,12 +63,32 @@
       </h2>
       <p>BACnet defines both directed and <GlossaryLink term="broadcast">broadcast</GlossaryLink> communication. Discovery commonly uses <strong><GlossaryLink term="who-is">Who-Is</GlossaryLink>/<GlossaryLink term="i-am">I-Am</GlossaryLink></strong>: Who-Is may be sent as a local broadcast, a remote/global broadcast through BACnet routing, or a directed message, depending on the intended scope.</p>
       <p>Broadcast delivery and directed <GlossaryLink term="unicast">unicast</GlossaryLink> reachability are separate concerns. A device may be discovered through a forwarded broadcast while later directed services fail because the learned BACnet address is not reachable from the client.</p>
+
+      <div class="primer-reading-guide">
+        <div>
+          <p class="eyebrow">HOW TO USE THE SCENARIOS</p>
+          <h3>BACnet makes several network layers part of the application conversation</h3>
+          <p>A typical application-layer protocol starts with a known server address and follows one routed request-and-response path. BACnet can begin with <GlossaryLink term="broadcast">broadcast</GlossaryLink> discovery, cross different <GlossaryLink term="datalink">datalink</GlossaryLink> technologies, use its own <GlossaryLink term="network-number">network numbers</GlossaryLink> and routers, and distribute selected broadcasts independently of directed traffic. The scenarios below isolate those behaviors so a partial success is not mistaken for a healthy system.</p>
+        </div>
+        <ul>
+          <li><strong>Discovery is not reachability.</strong><span>Seeing an <GlossaryLink term="i-am">I-Am</GlossaryLink> does not prove that later <GlossaryLink term="readproperty">ReadProperty</GlossaryLink> traffic has a working forward and return path.</span></li>
+          <li><strong>IP routing is not BACnet routing.</strong><span>An <GlossaryLink term="ip-router">IP router</GlossaryLink> moves IP packets; a <GlossaryLink term="bacnet-router">BACnet router</GlossaryLink> joins BACnet networks and datalinks.</span></li>
+          <li><strong>Physical proximity is not logical membership.</strong><span>Devices on the same switches can still be separated by <GlossaryLink term="vlan">VLAN</GlossaryLink>, <GlossaryLink term="subnet">subnet</GlossaryLink>, <GlossaryLink term="port">UDP port</GlossaryLink>, or BACnet network configuration.</span></li>
+        </ul>
+      </div>
+
       <aside class="standards-note"><strong>Standards basis</strong><span>Claims in this primer are grounded in ANSI/ASHRAE Standard 135, including Clause 6 BACnet networking and Annex J BACnet/IP. Explanatory scenarios identify implementation and IP-network causes separately.</span><a href="https://data.ashrae.org/BACnet/" target="_blank" rel="noreferrer">ASHRAE 135 resources</a><a href="https://bacnet.org/developer-aids/" target="_blank" rel="noreferrer">BACnet Committee developer aids</a></aside>
     </div>
 
     <!-- Section 1: BACnet/IP vs BACnet/Ethernet -->
     <div class="primer-section">
       <h3 class="card-title" style="border: none; padding-bottom: 0;">1. Layer 2 vs Layer 3: BACnet/Ethernet vs BACnet/IP</h3>
+      <PrimerScenarioIntro
+        difference="The same BACnet objects and services can ride on datalinks with completely different addressing and encapsulation. BACnet/Ethernet has no IP or UDP layer, while BACnet/IP does."
+        risk="Teams assume every BACnet packet is routable IP traffic, place ordinary IP routers where BACnet routing is required, or troubleshoot at the wrong layer."
+      >
+        Start here to see where the BACnet application message stays the same and where the network envelope changes underneath it.
+      </PrimerScenarioIntro>
       <div class="primer-grid">
         <div class="primer-card">
           <h4 class="primer-subheading">BACnet/Ethernet (ISO 8802-3)</h4>
@@ -221,6 +241,12 @@
     <!-- Section 2: IP Subnets & Broadcast Address Intersection -->
     <div class="primer-section">
       <h3 class="card-title" style="border: none; padding-bottom: 0;">2. IP Subnets & Broadcast Address Intersection</h3>
+      <PrimerScenarioIntro
+        difference="BACnet discovery often depends on broadcast, while every endpoint independently uses its own subnet mask to decide whether directed traffic is local or must use a gateway."
+        risk="Mismatched masks create asymmetric paths: discovery may appear healthy even though one device sends replies directly and the other sends through a gateway."
+      >
+        This scenario separates the shared physical broadcast domain from the local-versus-remote decision each IP host makes for itself.
+      </PrimerScenarioIntro>
       <div class="primer-grid">
         <div class="primer-card">
           <h4 class="primer-subheading">What is a Subnet Broadcast?</h4>
@@ -366,6 +392,12 @@
     <!-- Section 3: BACnet Broadcast Management Devices (BBMD) -->
     <div class="primer-section">
       <h3 class="card-title" style="border: none; padding-bottom: 0;">3. Crossing Subnets: BACnet Broadcast Management Devices (BBMD)</h3>
+      <PrimerScenarioIntro
+        difference="A BBMD deliberately distributes BACnet/IP broadcasts across subnet boundaries, but it does not proxy later services or replace the routed unicast path between devices."
+        risk="A remote device appears in discovery while reads, writes, alarms, or acknowledgments fail because the advertised address has no usable route or return path."
+      >
+        Use these simulations to distinguish extending discovery scope from establishing complete end-to-end communications.
+      </PrimerScenarioIntro>
 
       <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
         <div class="primer-card">
@@ -535,6 +567,12 @@
     <!-- Section: Split Horizon Case Study & Simulator -->
     <div class="primer-section">
       <h3 class="card-title" style="border: none; padding-bottom: 0;">4. Split Horizon BBMD Architectures</h3>
+      <PrimerScenarioIntro
+        difference="BACnet broadcast distribution can be designed as selective communities rather than one flat domain. Different BDT relationships can intentionally give participants different views."
+        risk="An incomplete or unintended BDT design causes one-way discovery, duplicate forwarding, tenant leakage, or isolation that looks like an intermittent device fault."
+      >
+        This case study shows that broadcast visibility is a topology and policy decision, not an automatic consequence of IP connectivity.
+      </PrimerScenarioIntro>
       <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
         <div class="primer-card">
           <h4 class="primer-subheading">What is Split Horizon BBMD?</h4>
@@ -647,6 +685,12 @@
     <!-- Section 5: VLAN Tagging and Multi-Net Isolation -->
     <div class="primer-section">
       <h3 class="card-title" style="border: none; padding-bottom: 0;">5. Network Segmentation: VLAN Tagging</h3>
+      <PrimerScenarioIntro
+        difference="BACnet discovery follows the real Layer 2 broadcast domain, and directed traffic follows the real Layer 3 path. BACnet does not bypass VLAN boundaries or network security policy."
+        risk="A wrong access VLAN, trunk allowance, gateway, return route, ACL, or firewall rule can break only one traffic direction or one BACnet service class."
+      >
+        This scenario connects switch configuration to what BACnet devices can actually discover and reach across segmented IP networks.
+      </PrimerScenarioIntro>
       <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
 
         <!-- Explanation card -->
@@ -810,7 +854,13 @@
     </div>
 
     <div class="glass-card">
-      <h3 class="card-title">8. Multiple BACnet/IP Networks on One IP Subnet</h3>
+      <h3 class="card-title">6. Multiple BACnet/IP Networks on One IP Subnet</h3>
+      <PrimerScenarioIntro
+        difference="A BACnet/IP datalink is identified by more than the IPv4 subnet: the UDP port also separates logical B/IP networks that occupy the same Ethernet, VLAN, and address range."
+        risk="Tools scan the wrong port, BBMD and firewall rules cover only the default port, network numbers collide, or no BACnet router joins the logical datalinks."
+      >
+        The final scenario demonstrates why “same IP subnet” does not necessarily mean “same BACnet/IP network.”
+      </PrimerScenarioIntro>
       <p>BACnet/IP uses UDP <code>47808</code> (<code>0xBAC0</code>) by default, but a B/IP datalink may be configured for another UDP port. Sites sometimes place several distinct BACnet network numbers on the same IPv4 subnet and VLAN by assigning a different UDP port to each B/IP network—for example 47808, 47809, and 47810.</p>
       <div class="multi-port-primer-grid">
         <article><span class="port-badge">UDP 47808</span><strong>B/IP Network 1001</strong><small>192.168.50.0/24 · broadcast 192.168.50.255:47808</small></article>
@@ -836,6 +886,7 @@ import AppButton from './AppButton.vue';
 import AceToggle from './AceToggle.vue';
 import AceSvgNetworkNode from './AceSvgNetworkNode.vue';
 import GlossaryLink from './GlossaryLink.vue';
+import PrimerScenarioIntro from './PrimerScenarioIntro.vue';
 import { ipToLong, longToIp, getSubnetDetails, cidrToMask, toBinaryString } from '../lib/subnet';
 
 const activeOsiTab = ref('ip-local-uc');
