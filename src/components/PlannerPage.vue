@@ -14,7 +14,9 @@
         <h2 style="font-family: var(--font-heading); font-size: 1.35rem; color: #fff; margin: 0;">BACnet Network Planner</h2>
       </div>
       <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.55; max-width: 900px;">
-        Design BACnet/IP, BACnet/SC, MS/TP, and ARCNET networks, define their infrastructure and communications paths, and generate structured design spreadsheets and diagrams.
+        Design <GlossaryLink term="bacnet-ip">BACnet/IP</GlossaryLink>, <GlossaryLink term="bacnet-sc">BACnet/SC</GlossaryLink>,
+        <GlossaryLink term="mstp">MS/TP</GlossaryLink>, and <GlossaryLink term="arcnet">ARCNET</GlossaryLink> networks, define their infrastructure
+        and communications paths, and generate structured design spreadsheets and diagrams.
       </p>
     </div>
 
@@ -391,6 +393,7 @@ import { exportPlannerXlsx } from '../lib/export-xlsx';
 import { createDiagramProjectFromPlan } from '../lib/network-diagram';
 import AppButton from './AppButton.vue';
 import AceCheckbox from './AceCheckbox.vue';
+import GlossaryLink from './GlossaryLink.vue';
 import AceToggle from './AceToggle.vue';
 
 const splitHorizon = ref(false);

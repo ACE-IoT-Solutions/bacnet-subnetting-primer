@@ -4,7 +4,9 @@
       <div>
         <p class="eyebrow">COMMUNICATE THE CONDITION</p>
         <h2>Network Diagram Builder</h2>
-        <p>Document BACnet/IP subnets, MS/TP trunks, ARCNET segments, field devices, and infrastructure. The diagram updates as you edit it.</p>
+        <p>Document <GlossaryLink term="bacnet-ip">BACnet/IP</GlossaryLink> <GlossaryLink term="subnet">subnets</GlossaryLink>,
+          <GlossaryLink term="mstp">MS/TP</GlossaryLink> trunks, <GlossaryLink term="arcnet">ARCNET</GlossaryLink> segments, field devices,
+          and infrastructure. The diagram updates as you edit it.</p>
       </div>
       <div class="diagram-actions">
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
@@ -337,6 +339,7 @@ import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from '
 import AppButton from './AppButton.vue';
 import AceToggle from './AceToggle.vue';
 import AceCheckbox from './AceCheckbox.vue';
+import GlossaryLink from './GlossaryLink.vue';
 import { getSubnetDetails, ipToLong } from '../lib/subnet';
 import {
   addressState, createDefaultProject, createDevice, createDeviceAddress, createInfrastructure, createNic, createSubnet,

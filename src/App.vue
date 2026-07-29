@@ -57,6 +57,14 @@
         </svg>
         Diagram Builder
       </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'glossary' }" @click="setActiveTab('glossary')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          <path d="M9 7h7M9 11h5"></path>
+        </svg>
+        Glossary
+      </button>
     </div>
 
     <!-- Active Tab Page Content -->
@@ -71,6 +79,9 @@
     </div>
     <div v-show="activeTab === 'diagram'" class="page-tab" :class="{ active: activeTab === 'diagram' }">
       <NetworkDiagramPage />
+    </div>
+    <div v-show="activeTab === 'glossary'" class="page-tab" :class="{ active: activeTab === 'glossary' }">
+      <GlossaryPage :target="glossaryTarget" @navigate="openGlossary" />
     </div>
 
     <!-- Footer -->
@@ -97,6 +108,7 @@ import CalculatorPage from './components/CalculatorPage.vue';
 import PrimerPage from './components/PrimerPage.vue';
 import PlannerPage from './components/PlannerPage.vue';
 import NetworkDiagramPage from './components/NetworkDiagramPage.vue';
+import GlossaryPage from './components/GlossaryPage.vue';
 import AceNetworkIconSymbols from './components/AceNetworkIconSymbols.vue';
 
 interface LogEntry {
@@ -105,15 +117,17 @@ interface LogEntry {
   timestamp: string;
 }
 
-type AppTab = 'calculator' | 'primer' | 'planner' | 'diagram';
+type AppTab = 'calculator' | 'primer' | 'planner' | 'diagram' | 'glossary';
 const activeTab = ref<AppTab>('calculator');
+const glossaryTarget = ref<string | null>(null);
 const advancedBacnetPorts = ref(localStorage.getItem('ace-advanced-bacnet-ports') === 'true');
 
 // Synchronize hash to activeTab
 const updateTabFromHash = () => {
-  const hash = window.location.hash.replace('#', '') as AppTab;
-  if (hash === 'calculator' || hash === 'primer' || hash === 'planner' || hash === 'diagram') {
-    activeTab.value = hash;
+  const [tab, target] = window.location.hash.replace('#', '').split('/');
+  if (tab === 'calculator' || tab === 'primer' || tab === 'planner' || tab === 'diagram' || tab === 'glossary') {
+    activeTab.value = tab;
+    glossaryTarget.value = tab === 'glossary' && target ? decodeURIComponent(target) : null;
   } else {
     // Default to current tab if invalid or empty hash
     window.location.hash = activeTab.value;
@@ -123,7 +137,14 @@ const updateTabFromHash = () => {
 // Set hash when activeTab is clicked
 const setActiveTab = (tab: AppTab) => {
   activeTab.value = tab;
+  glossaryTarget.value = null;
   window.location.hash = tab;
+};
+
+const openGlossary = (term: string) => {
+  glossaryTarget.value = term;
+  activeTab.value = 'glossary';
+  window.location.hash = `glossary/${encodeURIComponent(term)}`;
 };
 
 // Initial resolve before mount
@@ -170,6 +191,7 @@ const clearConsole = () => {
 provide('logs', logs);
 provide('logToConsole', logToConsole);
 provide('advancedBacnetPorts', advancedBacnetPorts);
+provide('openGlossary', openGlossary);
 
 watch(advancedBacnetPorts, value => localStorage.setItem('ace-advanced-bacnet-ports', String(value)));
 provide('clearConsole', clearConsole);

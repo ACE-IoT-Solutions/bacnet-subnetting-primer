@@ -179,14 +179,14 @@
           Live Network Path & Packet Simulator
         </h2>
 
-        <p>Simulate how BACnet/IP packets travel between Device A and Device B based on current configurations. Click an action to inject a BACnet service frame and trace its flow.</p>
+        <p>Simulate how <GlossaryLink term="bacnet-ip">BACnet/IP</GlossaryLink> packets travel between Device A and Device B based on current configurations. Click an action to inject a BACnet <GlossaryLink term="service">service</GlossaryLink> frame and trace its flow.</p>
 
         <!-- Simulator Canvas SVG -->
         <svg ref="svgRef" id="calc-sim-svg" class="diagram-canvas" viewBox="0 0 800 320" width="100%">
           <!-- Wires -->
-          <path id="wire-a-to-swA" d="M 120 160 L 320 220" class="wire-path active"></path>
-          <path v-show="!isRouted" id="wire-b-to-swA" d="M 700 152.5 L 320 220" class="wire-path active"></path>
-          <path v-show="isRouted" id="wire-b-to-swB" d="M 700 152.5 L 480 220" class="wire-path active"></path>
+          <path id="wire-a-to-swA" d="M 168 160 L 320 220" class="wire-path active"></path>
+          <path v-show="!isRouted" id="wire-b-to-swA" d="M 632 160 L 320 220" class="wire-path active"></path>
+          <path v-show="isRouted" id="wire-b-to-swB" d="M 632 160 L 480 220" class="wire-path active"></path>
           <path v-show="isRouterVisible" id="wire-swA-to-router" d="M 320 220 L 400 100" class="wire-path"></path>
           <path v-show="isRouted" id="wire-swB-to-router" d="M 480 220 L 400 100" class="wire-path"></path>
 
@@ -209,23 +209,26 @@
           <!-- IP Router -->
           <AceSvgNetworkNode v-show="isRouterVisible" :x="400" :y="100" :radius="24" :icon-size="24" label="Router" />
 
-          <!-- Device A Node -->
-          <g class="node-group" id="sim-node-devA">
-            <rect x="40" y="120" width="120" height="65" rx="8"></rect>
-            <use href="#ace-sim-device" class="sim-node-icon" x="50" y="130" width="22" height="22" />
-            <text x="110" y="142" class="node-label">Device A</text>
-            <text x="100" y="158" class="node-ip">{{ devAIp }}:{{ devAPort }}</text>
-            <text x="100" y="172" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">/{{ devACidr }}</text>
-          </g>
+          <AceSvgDeviceCard
+            id="sim-node-devA"
+            :x="100"
+            :y="152"
+            label="Device A"
+            :address="devAIp"
+            :port="devAPort"
+            :cidr="devACidr"
+          />
 
-          <!-- Device B Node -->
-          <g class="node-group" id="sim-node-devB">
-            <rect x="640" y="120" width="120" height="65" rx="8"></rect>
-            <use href="#ace-sim-device" class="sim-node-icon secondary" x="650" y="130" width="22" height="22" />
-            <text x="710" y="142" class="node-label">Device B</text>
-            <text x="700" y="158" class="node-ip">{{ devBIp }}:{{ devBPort }}</text>
-            <text x="700" y="172" font-family="Inter" font-size="9" fill="#64748b" text-anchor="middle">/{{ devBCidr }}</text>
-          </g>
+          <AceSvgDeviceCard
+            id="sim-node-devB"
+            :x="700"
+            :y="152"
+            label="Device B"
+            :address="devBIp"
+            :port="devBPort"
+            :cidr="devBCidr"
+            tone="secondary"
+          />
 
           <!-- BBMD Wires -->
           <path v-show="isRouted && bbmdEnabled" d="M 320 220 L 100 90" class="wire-path" style="stroke-dasharray: 4; stroke: var(--primary);"></path>
@@ -283,7 +286,9 @@ import { ref, computed, watch, inject } from 'vue';
 import TerminalLog from './TerminalLog.vue';
 import AppButton from './AppButton.vue';
 import AceToggle from './AceToggle.vue';
+import AceSvgDeviceCard from './AceSvgDeviceCard.vue';
 import AceSvgNetworkNode from './AceSvgNetworkNode.vue';
+import GlossaryLink from './GlossaryLink.vue';
 import {
   ipToLong,
   longToIp,

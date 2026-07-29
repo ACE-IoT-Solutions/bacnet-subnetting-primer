@@ -16,9 +16,11 @@ This is designed for control engineers, network integrators, and building automa
 - **Live Network Simulator:** Send simulated Who-Is (Broadcast) and ReadProperty (Unicast) packets and trace their paths across switches, routers, and BBMD tunnels in real-time.
 - **Network Diagram Builder:** Document any number of subnets, devices with multiple NICs and multiple addresses per NIC, routers, switches, firewalls, gateways, and BBMDs in a live topology. Draw ordered connectivity tests through intermediate hops, distinguish successful and unsuccessful paths, surface address warnings, and export shareable SVG, PDF, or editable JSON files.
 - **Interactive Networking Primer:**
+  - **BACnet Introduction:** Explains the object model, services, supported transports, interoperability goals, and how BACnet is used from field equipment through supervisory systems.
   - **Layer 2 vs Layer 3:** Compares BACnet/Ethernet (MAC-level) vs BACnet/IP (UDP-level) with an interactive encapsulation packet inspector.
   - **BBMD Tunneling Simulator:** Traces how BACnet Broadcast Management Devices encapsulate and tunnel broadcasts across IP routers.
   - **Discovery vs. Reachability:** Demonstrates how a BBMD-forwarded I-Am can make a device visible even though later ReadProperty and other unicast services fail because the advertised address is not routable.
+- **Searchable BACnet Glossary:** Defines protocol, message, datalink, IP-networking, and system-delivery terminology, with direct links from explanatory content throughout every application page.
 
 ## Technology Stack
 

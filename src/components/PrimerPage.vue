@@ -1,14 +1,68 @@
 <template>
   <div style="display: flex; flex-direction: column; gap: 2rem; width: 100%;">
 
-    <!-- Header/Intro -->
+    <section class="glass-card bacnet-overview">
+      <div class="bacnet-overview__heading">
+        <div>
+          <p class="eyebrow">START HERE</p>
+          <h2>What BACnet is—and what it does in a building</h2>
+        </div>
+        <span class="bacnet-overview__standard">ANSI/ASHRAE 135 · ISO 16484-5</span>
+      </div>
+
+      <p class="bacnet-overview__lead">
+        <GlossaryLink term="bacnet">BACnet</GlossaryLink> is a vendor-independent communication standard made specifically for
+        <GlossaryLink term="bacs">building automation and control systems</GlossaryLink>. It gives equipment from different manufacturers
+        a common way to describe building data, request actions, report status, and coordinate operation.
+      </p>
+
+      <div class="bacnet-concept-grid">
+        <article>
+          <span>1</span>
+          <h3>A common model</h3>
+          <p><GlossaryLink term="object">Objects</GlossaryLink> represent useful building concepts—inputs, outputs, schedules, alarms, trend logs, and devices. Each object exposes standardized <GlossaryLink term="property">properties</GlossaryLink> such as its name, value, units, and status.</p>
+        </article>
+        <article>
+          <span>2</span>
+          <h3>A common set of actions</h3>
+          <p><GlossaryLink term="service">Services</GlossaryLink> define what devices say to one another. A workstation might use <GlossaryLink term="readproperty">ReadProperty</GlossaryLink> to display a room temperature, use <GlossaryLink term="writeproperty">WriteProperty</GlossaryLink> to change a setpoint, or subscribe for <GlossaryLink term="cov">Change of Value</GlossaryLink> updates.</p>
+        </article>
+        <article>
+          <span>3</span>
+          <h3>Several ways to carry messages</h3>
+          <p>The same BACnet information can travel over datalinks suited to different jobs, including <GlossaryLink term="bacnet-ip">BACnet/IP</GlossaryLink>, <GlossaryLink term="bacnet-sc">BACnet/SC</GlossaryLink>, and <GlossaryLink term="mstp">MS/TP</GlossaryLink>. <GlossaryLink term="bacnet-router">BACnet routers</GlossaryLink> join those networks into an internetwork.</p>
+        </article>
+        <article>
+          <span>4</span>
+          <h3>Interoperability as the goal</h3>
+          <p><GlossaryLink term="interoperability">Interoperability</GlossaryLink> lets operators integrate HVAC, lighting, access control, energy, and other building systems without every device sharing a manufacturer. Project requirements still need to identify the exact data and functions that must work together.</p>
+        </article>
+      </div>
+
+      <div class="bacnet-use-flow" aria-label="Typical BACnet information flow">
+        <div><strong>Field equipment</strong><span>Sensors, actuators, meters, and packaged units expose their operating data.</span></div>
+        <svg viewBox="0 0 32 18" aria-hidden="true"><path d="M2 9h25M21 3l6 6-6 6"></path></svg>
+        <div><strong>Controllers</strong><span>Control programs read inputs, command outputs, schedule operation, and report events.</span></div>
+        <svg viewBox="0 0 32 18" aria-hidden="true"><path d="M2 9h25M21 3l6 6-6 6"></path></svg>
+        <div><strong>Supervisory systems</strong><span>Operator workstations visualize, trend, alarm, and coordinate the whole facility.</span></div>
+      </div>
+
+      <aside class="standards-note">
+        <strong>Conceptual guide</strong>
+        <span>This introduction follows H. Michael Newman’s explanation of BACnet’s enduring foundations: objects, services, consistent message encoding, transport choices, and interoperability. The linked article reflects BACnet-2012, so historical feature counts in it are not treated as current.</span>
+        <a href="https://bacnet.org/wp-content/uploads/sites/4/2022/06/Newman-2013.pdf" target="_blank" rel="noreferrer">Read “BACnet Explained” by H. Michael Newman</a>
+        <a href="https://bacnet.org/about/" target="_blank" rel="noreferrer">Current BACnet Committee overview</a>
+      </aside>
+    </section>
+
+    <!-- Networking Intro -->
     <div class="glass-card primer-intro">
       <h2 class="card-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
         BACnet Networking: The Fundamentals
       </h2>
-      <p>BACnet defines both directed and broadcast communication. Discovery commonly uses <strong>Who-Is/I-Am</strong>: Who-Is may be sent as a local broadcast, a remote/global broadcast through BACnet routing, or a directed message, depending on the intended scope.</p>
-      <p>Broadcast delivery and directed reachability are separate concerns. A device may be discovered through a forwarded broadcast while later directed services fail because the learned BACnet address is not reachable from the client.</p>
+      <p>BACnet defines both directed and <GlossaryLink term="broadcast">broadcast</GlossaryLink> communication. Discovery commonly uses <strong><GlossaryLink term="who-is">Who-Is</GlossaryLink>/<GlossaryLink term="i-am">I-Am</GlossaryLink></strong>: Who-Is may be sent as a local broadcast, a remote/global broadcast through BACnet routing, or a directed message, depending on the intended scope.</p>
+      <p>Broadcast delivery and directed <GlossaryLink term="unicast">unicast</GlossaryLink> reachability are separate concerns. A device may be discovered through a forwarded broadcast while later directed services fail because the learned BACnet address is not reachable from the client.</p>
       <aside class="standards-note"><strong>Standards basis</strong><span>Claims in this primer are grounded in ANSI/ASHRAE Standard 135, including Clause 6 BACnet networking and Annex J BACnet/IP. Explanatory scenarios identify implementation and IP-network causes separately.</span><a href="https://data.ashrae.org/BACnet/" target="_blank" rel="noreferrer">ASHRAE 135 resources</a><a href="https://bacnet.org/developer-aids/" target="_blank" rel="noreferrer">BACnet Committee developer aids</a></aside>
     </div>
 
@@ -18,8 +72,8 @@
       <div class="primer-grid">
         <div class="primer-card">
           <h4 class="primer-subheading">BACnet/Ethernet (ISO 8802-3)</h4>
-          <p>BACnet/Ethernet is a <strong>Layer 2 (Data Link)</strong> protocol. Devices communicate directly using raw Ethernet frames and MAC addresses. It does not use IP addresses.</p>
-          <p><strong>Boundary:</strong> BACnet/Ethernet frames are not carried by an ordinary IP router. Bridges may extend the same Ethernet broadcast domain, but communication to another BACnet network requires a BACnet router operating at the BACnet network layer.</p>
+          <p>BACnet/Ethernet is a <strong>Layer 2 <GlossaryLink term="datalink">(Data Link)</GlossaryLink></strong> protocol. Devices communicate directly using raw Ethernet frames and <GlossaryLink term="mac-address">MAC addresses</GlossaryLink>. It does not use IP addresses.</p>
+          <p><strong>Boundary:</strong> BACnet/Ethernet frames are not carried by an ordinary <GlossaryLink term="ip-router">IP router</GlossaryLink>. Bridges may extend the same Ethernet broadcast domain, but communication to another BACnet network requires a <GlossaryLink term="bacnet-router">BACnet router</GlossaryLink> operating at the BACnet network layer.</p>
 
           <h4 class="primer-subheading" style="margin-top: 1.25rem;">BACnet/Ethernet Broadcasts</h4>
           <p>For device discovery (Who-Is/I-Am), BACnet/Ethernet relies on the physical MAC broadcast address <strong><code>FF:FF:FF:FF:FF:FF</code></strong>.</p>
@@ -30,7 +84,7 @@
           </ul>
 
           <h4 class="primer-subheading" style="margin-top: 1.5rem;">BACnet/IP (Annex J)</h4>
-          <p>BACnet/IP carries BACnet messages using BVLL over <strong>UDP/IP</strong>. The standard default UDP port is <code>47808</code> / <code>0xBAC0</code>, although another port may be configured.</p>
+          <p><GlossaryLink term="bacnet-ip">BACnet/IP</GlossaryLink> carries BACnet messages using <GlossaryLink term="bvll">BVLL</GlossaryLink> over <strong><GlossaryLink term="udp">UDP/IP</GlossaryLink></strong>. The standard default <GlossaryLink term="port">UDP port</GlossaryLink> is <code>47808</code> / <code>0xBAC0</code>, although another port may be configured.</p>
           <p><strong>Benefit:</strong> Directed BACnet/IP traffic can use ordinary IP routing. Annex J broadcast management allows one BACnet/IP network number to span multiple IP subnets; separate BACnet network numbers instead require BACnet network-layer routing.</p>
         </div>
 
@@ -781,6 +835,7 @@ import TerminalLog from './TerminalLog.vue';
 import AppButton from './AppButton.vue';
 import AceToggle from './AceToggle.vue';
 import AceSvgNetworkNode from './AceSvgNetworkNode.vue';
+import GlossaryLink from './GlossaryLink.vue';
 import { ipToLong, longToIp, getSubnetDetails, cidrToMask, toBinaryString } from '../lib/subnet';
 
 const activeOsiTab = ref('ip-local-uc');
