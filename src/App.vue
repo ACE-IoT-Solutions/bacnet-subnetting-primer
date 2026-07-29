@@ -98,7 +98,12 @@
         <span style="font-family: var(--font-heading); font-size: 0.9rem; color: var(--text-muted); padding-left: 0.5rem;">BACnet Network Calculator</span>
       </div>
       <p>Designed for control engineers, network integrators, and building automation specialists. &copy; 2026. Hosted on GitHub Pages via Actions.</p>
+      <button class="footer-signup-button" type="button" @click="openSignup">
+        Sign up for updates
+      </button>
     </footer>
+
+    <SignupBanner :visible="signupVisible" @close="closeSignup" />
   </div>
 </template>
 
@@ -110,6 +115,7 @@ import PlannerPage from './components/PlannerPage.vue';
 import NetworkDiagramPage from './components/NetworkDiagramPage.vue';
 import GlossaryPage from './components/GlossaryPage.vue';
 import AceNetworkIconSymbols from './components/AceNetworkIconSymbols.vue';
+import SignupBanner from './components/SignupBanner.vue';
 
 interface LogEntry {
   text: string;
@@ -120,7 +126,9 @@ interface LogEntry {
 type AppTab = 'calculator' | 'primer' | 'planner' | 'diagram' | 'glossary';
 const activeTab = ref<AppTab>('calculator');
 const glossaryTarget = ref<string | null>(null);
+const signupVisible = ref(false);
 const advancedBacnetPorts = ref(localStorage.getItem('ace-advanced-bacnet-ports') === 'true');
+const SIGNUP_SEEN_KEY = 'ace-updates-signup-seen-v1';
 
 // Synchronize hash to activeTab
 const updateTabFromHash = () => {
@@ -147,12 +155,28 @@ const openGlossary = (term: string) => {
   window.location.hash = `glossary/${encodeURIComponent(term)}`;
 };
 
+const openSignup = () => {
+  signupVisible.value = true;
+};
+
+const closeSignup = () => {
+  signupVisible.value = false;
+};
+
 // Initial resolve before mount
 updateTabFromHash();
 
 onMounted(() => {
   window.addEventListener('hashchange', updateTabFromHash);
   window.addEventListener('ace-open-planned-diagram', openPlannedDiagram);
+  try {
+    if (localStorage.getItem(SIGNUP_SEEN_KEY) !== 'true') {
+      signupVisible.value = true;
+      localStorage.setItem(SIGNUP_SEEN_KEY, 'true');
+    }
+  } catch {
+    // Storage can be unavailable in privacy-restricted contexts; the footer control remains usable.
+  }
 });
 
 const openPlannedDiagram = () => setActiveTab('diagram');

@@ -21,6 +21,7 @@ This is designed for control engineers, network integrators, and building automa
   - **BBMD Tunneling Simulator:** Traces how BACnet Broadcast Management Devices encapsulate and tunnel broadcasts across IP routers.
   - **Discovery vs. Reachability:** Demonstrates how a BBMD-forwarded I-Am can make a device visible even though later ReadProperty and other unicast services fail because the advertised address is not routable.
 - **Searchable BACnet Glossary:** Defines protocol, message, datalink, IP-networking, and system-delivery terminology, with direct links from explanatory content throughout every application page.
+- **Updates Signup:** Presents a dismissible, one-time email signup and keeps an always-available signup control in the footer.
 
 ## Technology Stack
 

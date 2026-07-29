@@ -33,10 +33,12 @@
         :key="entry.id"
         class="glass-card glossary-entry"
         :class="{ 'glossary-entry--target': target === entry.id }"
+        :aria-current="target === entry.id ? 'location' : undefined"
+        tabindex="-1"
       >
         <div class="glossary-entry__heading">
           <div>
-            <h3>{{ entry.term }}</h3>
+            <h3 class="glossary-entry__term">{{ entry.term }}</h3>
             <span v-if="entry.abbreviation">{{ entry.abbreviation }}</span>
           </div>
           <small>{{ entry.category }}</small>
@@ -92,7 +94,9 @@ const focusTarget = async (target: string | null | undefined) => {
   if (!target || !glossaryEntryById.has(target)) return;
   query.value = '';
   await nextTick();
-  document.getElementById(`glossary-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const targetEntry = document.getElementById(`glossary-${target}`);
+  targetEntry?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  targetEntry?.focus({ preventScroll: true });
 };
 
 const openRelated = (term: string) => {

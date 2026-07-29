@@ -452,6 +452,34 @@ h1 {
   box-shadow: 0 0 0 3px rgba(var(--secondary-rgb), 0.12), var(--ace-shadow);
 }
 
+.glossary-entry:focus {
+  outline: none;
+}
+
+.glossary-entry__term {
+  width: fit-content;
+  margin: -0.18rem -0.32rem;
+  padding: 0.18rem 0.32rem;
+  border-radius: var(--radius-sm);
+  transition: color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.glossary-entry--target .glossary-entry__term {
+  background: var(--secondary);
+  color: #11131a;
+  box-shadow: 0 0 0 4px rgba(var(--secondary-rgb), 0.16);
+  animation: glossary-target-pulse 900ms ease-out;
+}
+
+@keyframes glossary-target-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--secondary-rgb), 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgba(var(--secondary-rgb), 0);
+  }
+}
+
 .glossary-entry__heading {
   display: flex;
   justify-content: space-between;
@@ -1710,6 +1738,28 @@ footer a:hover {
   color: var(--text-primary);
 }
 
+.footer-signup-button {
+  margin-top: 0.65rem;
+  padding: 0.35rem 0.15rem;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: transparent;
+  color: var(--secondary);
+  cursor: pointer;
+  font: 700 0.82rem var(--font-heading);
+}
+
+.footer-signup-button:hover {
+  color: var(--primary);
+  border-bottom-style: solid;
+}
+
+.footer-signup-button:focus-visible {
+  border-radius: 2px;
+  outline: 3px solid var(--ace-focus);
+  outline-offset: 3px;
+}
+
 .footer-logo {
   display: flex;
   align-items: center;
@@ -1722,6 +1772,249 @@ footer a:hover {
   width: 20px;
   height: 20px;
   color: var(--text-muted);
+}
+
+.signup-banner {
+  position: fixed;
+  z-index: 1000;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: auto minmax(220px, 0.8fr) minmax(340px, 1.2fr);
+  align-items: center;
+  gap: 1rem;
+  width: min(1040px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 1.1rem 3.25rem 1.1rem 1.2rem;
+  border: 1px solid rgba(var(--secondary-rgb), 0.34);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(110deg, rgba(var(--primary-rgb), 0.08), transparent 38%),
+    rgba(25, 28, 38, 0.97);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.signup-banner__close {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.signup-banner__close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.signup-banner__close:focus-visible {
+  outline: 3px solid var(--ace-focus);
+}
+
+.signup-banner__close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.signup-banner__mark {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #15170c;
+  box-shadow: 0 0 24px rgba(var(--primary-rgb), 0.2);
+}
+
+.signup-banner__mark svg {
+  width: 1.45rem;
+  height: 1.45rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.signup-banner__copy {
+  min-width: 0;
+}
+
+.signup-banner__copy .eyebrow {
+  margin: 0 0 0.15rem;
+}
+
+.signup-banner__copy h2 {
+  font: 700 1.15rem/1.25 var(--font-heading);
+}
+
+.signup-banner__copy > p:last-child {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.signup-banner__form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 0.45rem 0.6rem;
+  align-items: start;
+}
+
+.signup-banner__form input[type="email"] {
+  width: 100%;
+  min-height: 2.7rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  outline: 0;
+  background: rgba(17, 19, 26, 0.88);
+  color: var(--text-primary);
+  font: 0.9rem var(--font-sans);
+}
+
+.signup-banner__form input[type="email"]:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 3px var(--ace-focus);
+}
+
+.signup-banner__form input[type="email"][aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.signup-banner__form .btn {
+  min-width: 110px;
+  min-height: 2.7rem;
+}
+
+.signup-banner__form small {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.signup-banner__honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.signup-banner__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.signup-banner__success {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 0.7rem;
+  color: var(--text-primary);
+}
+
+.signup-banner__success svg {
+  width: 2rem;
+  height: 2rem;
+  padding: 0.35rem;
+  border-radius: 50%;
+  background: var(--success);
+  fill: none;
+  stroke: white;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.signup-banner__success div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.signup-banner__success strong {
+  font: 700 0.9rem var(--font-heading);
+}
+
+.signup-banner__success span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.signup-banner-enter-active,
+.signup-banner-leave-active {
+  transition: opacity 220ms ease, transform 260ms ease;
+}
+
+.signup-banner-enter-from,
+.signup-banner-leave-to {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+@media (max-width: 800px) {
+  .signup-banner {
+    grid-template-columns: auto 1fr;
+    gap: 0.8rem;
+  }
+
+  .signup-banner__form,
+  .signup-banner__success {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .signup-banner {
+    padding: 1rem 2.8rem 1rem 1rem;
+  }
+
+  .signup-banner__mark {
+    width: 2.65rem;
+    height: 2.65rem;
+  }
+
+  .signup-banner__form {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-banner__form .btn,
+  .signup-banner__form small,
+  .signup-banner__error {
+    grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-banner-enter-active,
+  .signup-banner-leave-active {
+    transition: none;
+  }
+
+  .glossary-entry--target .glossary-entry__term {
+    animation: none;
+  }
 }
 
 /* Network Planner Custom CSS */
