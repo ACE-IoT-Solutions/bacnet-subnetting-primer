@@ -21,23 +21,6 @@
 
     <!-- Navigation Tabs -->
     <div class="tabs-navigation">
-      <button class="tab-btn" :class="{ active: activeTab === 'calculator' }" @click="setActiveTab('calculator')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-          <line x1="9" y1="9" x2="15" y2="9"></line>
-          <line x1="9" y1="13" x2="15" y2="13"></line>
-          <line x1="9" y1="17" x2="15" y2="17"></line>
-          <line x1="12" y1="9" x2="12" y2="17"></line>
-        </svg>
-        Calculator & Simulator
-      </button>
-      <button class="tab-btn" :class="{ active: activeTab === 'primer' }" @click="setActiveTab('primer')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-        </svg>
-        Interactive Primer
-      </button>
       <button class="tab-btn" :class="{ active: activeTab === 'planner' }" @click="setActiveTab('planner')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -57,6 +40,23 @@
         </svg>
         Diagram Builder
       </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'calculator' }" @click="setActiveTab('calculator')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+          <line x1="9" y1="9" x2="15" y2="9"></line>
+          <line x1="9" y1="13" x2="15" y2="13"></line>
+          <line x1="9" y1="17" x2="15" y2="17"></line>
+          <line x1="12" y1="9" x2="12" y2="17"></line>
+        </svg>
+        Calculator & Simulator
+      </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'primer' }" @click="setActiveTab('primer')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+        </svg>
+        Interactive Primer
+      </button>
       <button class="tab-btn" :class="{ active: activeTab === 'glossary' }" @click="setActiveTab('glossary')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
@@ -68,17 +68,17 @@
     </div>
 
     <!-- Active Tab Page Content -->
-    <div v-show="activeTab === 'calculator'" class="page-tab" :class="{ active: activeTab === 'calculator' }">
-      <CalculatorPage />
-    </div>
-    <div v-show="activeTab === 'primer'" class="page-tab" :class="{ active: activeTab === 'primer' }">
-      <PrimerPage />
-    </div>
     <div v-show="activeTab === 'planner'" class="page-tab" :class="{ active: activeTab === 'planner' }">
       <PlannerPage />
     </div>
     <div v-show="activeTab === 'diagram'" class="page-tab" :class="{ active: activeTab === 'diagram' }">
       <NetworkDiagramPage />
+    </div>
+    <div v-show="activeTab === 'calculator'" class="page-tab" :class="{ active: activeTab === 'calculator' }">
+      <CalculatorPage />
+    </div>
+    <div v-show="activeTab === 'primer'" class="page-tab" :class="{ active: activeTab === 'primer' }">
+      <PrimerPage />
     </div>
     <div v-show="activeTab === 'glossary'" class="page-tab" :class="{ active: activeTab === 'glossary' }">
       <GlossaryPage :target="glossaryTarget" @navigate="openGlossary" />
@@ -124,7 +124,7 @@ interface LogEntry {
 }
 
 type AppTab = 'calculator' | 'primer' | 'planner' | 'diagram' | 'glossary';
-const activeTab = ref<AppTab>('calculator');
+const activeTab = ref<AppTab>('planner');
 const glossaryTarget = ref<string | null>(null);
 const signupVisible = ref(false);
 const advancedBacnetPorts = ref(localStorage.getItem('ace-advanced-bacnet-ports') === 'true');

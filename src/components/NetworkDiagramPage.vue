@@ -9,12 +9,18 @@
           and infrastructure. The diagram updates as you edit it.</p>
       </div>
       <div class="diagram-actions">
+        <AppButton @click="openNmapImportDialog">Import Nmap</AppButton>
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
         <AppButton @click="saveJson">Save project</AppButton>
         <AppButton variant="primary" @click="saveSvg">Export SVG</AppButton>
         <AppButton :disabled="isExportingPdf" @click="openPdfExportDialog">{{ isExportingPdf ? 'Building PDF…' : 'Export PDF' }}</AppButton>
         <input ref="fileInput" class="visually-hidden" type="file" accept="application/json,.json" @change="openJson">
       </div>
+    </div>
+
+    <div v-if="nmapImportNotice" class="diagram-import-notice" role="status">
+      <span>{{ nmapImportNotice }}</span>
+      <button type="button" aria-label="Dismiss import result" @click="nmapImportNotice = ''">×</button>
     </div>
 
     <div class="diagram-workspace">
@@ -304,6 +310,70 @@
       </main>
     </div>
 
+    <dialog ref="nmapImportDialog" class="nmap-import-dialog" aria-labelledby="nmap-import-title">
+      <div class="pdf-export-dialog-header">
+        <div>
+          <p class="eyebrow">DISCOVERED NETWORK INVENTORY</p>
+          <h3 id="nmap-import-title">Import Nmap scan output</h3>
+        </div>
+        <button class="pdf-dialog-close" type="button" aria-label="Close Nmap import" @click="nmapImportDialog?.close()">×</button>
+      </div>
+      <p class="pdf-export-description">
+        Paste the text containing <code>Nmap scan report for…</code> and <code>Host is up…</code> lines. Host discovery does not prove that a device speaks BACnet, so imported devices begin as IP-only inventory.
+      </p>
+
+      <label class="nmap-import-output">
+        <span>Nmap output</span>
+        <textarea
+          v-model="nmapOutput"
+          rows="11"
+          spellcheck="false"
+          placeholder="Nmap scan report for _gateway (10.115.12.1)&#10;Host is up (0.0015s latency).&#10;Nmap scan report for 10.115.12.6&#10;Host is up (0.00077s latency)."
+        ></textarea>
+      </label>
+
+      <div class="nmap-import-options">
+        <label>
+          <span>Network prefix</span>
+          <select v-model.number="nmapCidr">
+            <option v-for="cidr in cidrOptions" :key="`nmap-${cidr}`" :value="cidr">/{{ cidr }}</option>
+          </select>
+        </label>
+        <p>Nmap does not report the subnet mask. The selected prefix groups addresses into diagram networks; change it to match the scanned LAN.</p>
+      </div>
+
+      <div class="nmap-import-preview" aria-live="polite">
+        <template v-if="nmapHosts.length">
+          <div class="nmap-import-summary">
+            <span><strong>{{ nmapHosts.length }}</strong> responsive {{ nmapHosts.length === 1 ? 'address' : 'addresses' }}</span>
+            <span><strong>{{ nmapGroups.length }}</strong> {{ nmapGroups.length === 1 ? 'subnet' : 'subnets' }}</span>
+            <span><strong>{{ nmapNodeCount }}</strong> diagram {{ nmapNodeCount === 1 ? 'node' : 'nodes' }}</span>
+          </div>
+          <p v-if="nmapDuplicateCount" class="nmap-import-duplicates">
+            {{ nmapDuplicateCount }} {{ nmapDuplicateCount === 1 ? 'address already exists' : 'addresses already exist' }} in this project and will be skipped.
+          </p>
+          <div class="nmap-import-hosts">
+            <div v-for="host in nmapHosts" :key="host.ip">
+              <span class="nmap-import-host-status" aria-hidden="true"></span>
+              <span><strong>{{ nmapHostName(host) }}</strong><small>{{ host.ip }}<template v-if="host.latencySeconds !== undefined"> · {{ formatNmapLatency(host.latencySeconds) }}</template></small></span>
+              <em v-if="isNmapGatewayHost(host)">Gateway</em>
+              <em v-else-if="existingDiagramIps.has(host.ip)">Existing</em>
+            </div>
+          </div>
+        </template>
+        <p v-else class="nmap-import-empty">
+          No responsive IPv4 hosts found yet. Paste standard Nmap text output to preview the import.
+        </p>
+      </div>
+
+      <div class="pdf-export-dialog-actions">
+        <AppButton @click="nmapImportDialog?.close()">Cancel</AppButton>
+        <AppButton variant="primary" :disabled="nmapNewHostCount === 0" @click="importNmapHosts">
+          Import {{ nmapNewHostCount || '' }} {{ nmapNewHostCount === 1 ? 'host' : 'hosts' }}
+        </AppButton>
+      </div>
+    </dialog>
+
     <dialog ref="pdfExportDialog" class="pdf-export-dialog" aria-labelledby="pdf-export-title">
       <div class="pdf-export-dialog-header">
         <div>
@@ -342,6 +412,9 @@ import AceCheckbox from './AceCheckbox.vue';
 import GlossaryLink from './GlossaryLink.vue';
 import { getSubnetDetails, ipToLong } from '../lib/subnet';
 import {
+  groupNmapHostsBySubnet, isNmapGatewayHost, nmapHostName, parseNmapOutput, type NmapHost, type NmapSubnetGroup
+} from '../lib/nmap-import';
+import {
   addressState, createDefaultProject, createDevice, createDeviceAddress, createInfrastructure, createNic, createSubnet,
   createTestPath, getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, normalizeDiagramProject, subnetCidr,
   type DeviceKind, type DiagramDevice, type DiagramDeviceAddress, type DiagramInfrastructure, type DiagramNic,
@@ -358,6 +431,10 @@ const SUBNET_ACCENT_EXPORT_STYLES = `.subnet-accent{fill:var(--subnet-accent-col
 const project = ref<DiagramProject>(createDefaultProject());
 const fileInput = ref<HTMLInputElement | null>(null);
 const diagramSvg = ref<SVGSVGElement | null>(null);
+const nmapImportDialog = ref<HTMLDialogElement | null>(null);
+const nmapOutput = ref('');
+const nmapCidr = ref(24);
+const nmapImportNotice = ref('');
 const pdfExportDialog = ref<HTMLDialogElement | null>(null);
 const isExportingPdf = ref(false);
 const pdfTheme = ref<'dark' | 'light'>('light');
@@ -382,6 +459,20 @@ interface HostNode { device: DiagramDevice; ownerSubnet: DiagramSubnet }
 
 const diagnostics = computed(() => getDiagramDiagnostics(project.value));
 const deviceCount = computed(() => project.value.subnets.reduce((total, subnet) => total + subnet.devices.length, 0));
+const nmapHosts = computed(() => parseNmapOutput(nmapOutput.value));
+const nmapGroups = computed(() => groupNmapHostsBySubnet(nmapHosts.value, nmapCidr.value));
+const existingDiagramIps = computed(() => new Set([
+  ...project.value.infrastructure.map(item => item.ip).filter(Boolean),
+  ...project.value.subnets.flatMap(subnet => subnet.devices.flatMap(device =>
+    device.nics.flatMap(nic => nic.addresses.map(address => address.ip).filter(Boolean))
+  ))
+]));
+const nmapDuplicateCount = computed(() => nmapHosts.value.filter(host => existingDiagramIps.value.has(host.ip)).length);
+const nmapNewHostCount = computed(() => nmapHosts.value.length - nmapDuplicateCount.value);
+const nmapNodeCount = computed(() => new Set(nmapHosts.value.map(host => {
+  if (isNmapGatewayHost(host)) return `gateway:${host.ip}`;
+  return host.hostname ? `host:${host.hostname.toLocaleLowerCase()}` : `host:${host.ip}`;
+})).size);
 const ipSubnets = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip'));
 const routedNetworks = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip' || subnet.networkType === 'bacnet-sc'));
 const fieldSegments = computed(() => project.value.subnets.filter(subnet => subnet.networkType === 'mstp' || subnet.networkType === 'arcnet'));
@@ -440,6 +531,91 @@ function loadPlannedDiagram() {
 watch(project, value => localStorage.setItem(STORAGE_KEY, JSON.stringify(value)), { deep: true });
 
 function addSubnet() { project.value.subnets.push(createSubnet(project.value.subnets.length + 1)); }
+function openNmapImportDialog() {
+  nmapImportNotice.value = '';
+  nmapImportDialog.value?.showModal();
+}
+function matchingNmapSubnet(group: NmapSubnetGroup) {
+  return project.value.subnets.find(subnet => {
+    if (normalizedNetworkType(subnet) !== 'bacnet-ip' || subnet.cidr !== group.cidr) return false;
+    return getSubnetDetails(subnet.address, subnet.cidr)?.network === group.network;
+  });
+}
+function importNmapHosts() {
+  const duplicateCount = nmapDuplicateCount.value;
+  const freshHosts = nmapHosts.value.filter(host => !existingDiagramIps.value.has(host.ip));
+  if (!freshHosts.length) return;
+
+  const groups = groupNmapHostsBySubnet(freshHosts, nmapCidr.value);
+  const subnetByHostIp = new Map<string, DiagramSubnet>();
+  let createdSubnetCount = 0;
+
+  groups.forEach(group => {
+    let subnet = matchingNmapSubnet(group);
+    if (!subnet) {
+      subnet = createSubnet(project.value.subnets.length + 1);
+      subnet.name = `Discovered ${group.network}/${group.cidr}`;
+      subnet.address = group.network;
+      subnet.cidr = group.cidr;
+      subnet.vlan = '';
+      subnet.udpPort = '';
+      subnet.bacnetNetworkNumber = '';
+      project.value.subnets.push(subnet);
+      createdSubnetCount += 1;
+    }
+    group.hosts.forEach(host => subnetByHostIp.set(host.ip, subnet!));
+  });
+
+  const importedDevices = new Map<string, { device: DiagramDevice; hosts: NmapHost[] }>();
+  let gatewayCount = 0;
+
+  freshHosts.forEach(host => {
+    const subnet = subnetByHostIp.get(host.ip);
+    if (!subnet) return;
+
+    if (isNmapGatewayHost(host)) {
+      const gateway = createInfrastructure(project.value.infrastructure.length + 1);
+      gateway.name = host.hostname.replace(/^_+/, '') || `Gateway ${host.ip}`;
+      gateway.kind = 'gateway';
+      gateway.ip = host.ip;
+      gateway.subnetIds = [subnet.id];
+      gateway.notes = `Imported from Nmap host discovery${host.latencySeconds === undefined ? '' : ` · observed latency ${formatNmapLatency(host.latencySeconds)}`}`;
+      project.value.infrastructure.push(gateway);
+      gatewayCount += 1;
+      return;
+    }
+
+    const hostKey = host.hostname ? `name:${host.hostname.toLocaleLowerCase()}` : `ip:${host.ip}`;
+    let imported = importedDevices.get(hostKey);
+    if (!imported) {
+      const device = createDevice(subnet.devices.length + 1, subnet.id);
+      device.name = nmapHostName(host);
+      device.kind = 'other';
+      device.nics[0].name = 'Discovered interface';
+      device.nics[0].bacnetIpEnabled = false;
+      device.nics[0].addresses[0].ip = host.ip;
+      imported = { device, hosts: [] };
+      importedDevices.set(hostKey, imported);
+      subnet.devices.push(device);
+    } else {
+      const address = createDeviceAddress(subnet.id, `Address ${imported.device.nics[0].addresses.length + 1}`);
+      address.ip = host.ip;
+      imported.device.nics[0].addresses.push(address);
+    }
+    imported.hosts.push(host);
+    imported.device.notes = `Imported from Nmap host discovery · ${imported.hosts.length} responsive ${imported.hosts.length === 1 ? 'address' : 'addresses'}`;
+  });
+
+  project.value.viewMode = 'detailed';
+  const nodeCount = importedDevices.size + gatewayCount;
+  nmapImportNotice.value = `Imported ${freshHosts.length} responsive ${freshHosts.length === 1 ? 'address' : 'addresses'} as ${nodeCount} diagram ${nodeCount === 1 ? 'node' : 'nodes'}${createdSubnetCount ? ` and created ${createdSubnetCount} ${createdSubnetCount === 1 ? 'subnet' : 'subnets'}` : ''}.${duplicateCount ? ` Skipped ${duplicateCount} existing ${duplicateCount === 1 ? 'address' : 'addresses'}.` : ''}`;
+  nmapOutput.value = '';
+  nmapImportDialog.value?.close();
+}
+function formatNmapLatency(seconds: number) {
+  const milliseconds = seconds * 1000;
+  return `${milliseconds < 0.01 ? milliseconds.toFixed(3) : milliseconds < 1 ? milliseconds.toFixed(2) : milliseconds.toFixed(1)} ms`;
+}
 function removeSubnet(id: string) {
   const removedEndpointIds = project.value.subnets.flatMap(subnet => subnet.devices.flatMap(device =>
     device.nics.flatMap(nic => nic.addresses.filter(address => subnet.id === id || address.subnetId === id).map(address => address.id))
