@@ -180,6 +180,27 @@ describe('network diagram validation', () => {
     expect(getDiagramDiagnostics(diagram)).toEqual([]);
   });
 
+  it('imports planned core routing, BBMDs, and the BMS into the topology', () => {
+    const base = { gatewayOffset: 1, vlan: 10, port: 47808, bbmdEnabled: true, bbmdOffset: 10, bmsPlaced: false, bmsRole: 'none' as const, fdrTargetSubnetId: '', routeTargets: undefined };
+    const diagram = createDiagramProjectFromPlan([
+      { ...base, id: 'core', name: 'Core BMS Subnet', ip: '10.100.8.0', cidr: 23, bmsPlaced: true, bmsRole: 'bbmd' as const },
+      { ...base, id: 'campus-2', name: 'Campus Subnet 2', ip: '10.100.10.0', cidr: 23, vlan: 17 },
+      { ...base, id: 'campus-3', name: 'Campus Subnet 3', ip: '10.100.12.0', cidr: 23, vlan: 19 }
+    ]);
+
+    const router = diagram.infrastructure.find(item => item.kind === 'router');
+    const bbmds = diagram.infrastructure.filter(item => item.kind === 'bbmd');
+    const bms = diagram.subnets[0].devices.find(device => device.kind === 'server');
+    expect(router?.name).toBe('Core Router');
+    expect(router?.subnetIds).toEqual(diagram.subnets.map(subnet => subnet.id));
+    expect(bbmds).toHaveLength(2);
+    expect(bbmds.map(item => item.ip)).toEqual(['10.100.10.10', '10.100.12.10']);
+    expect(bms?.name).toBe('BMS Server / BBMD');
+    expect(bms?.bbmdEnabled).toBe(true);
+    expect(bms?.nics[0].addresses[0].ip).toBe('10.100.8.10');
+    expect(getDiagramDiagnostics(diagram)).toEqual([]);
+  });
+
   it('validates BACnet/SC hub assignment, failover endpoints, L3 reachability, and hub continuity', () => {
     const project = createDefaultProject();
     const underlay = project.subnets[0];
@@ -216,9 +237,9 @@ describe('network diagram validation', () => {
       { ...base, id: 'ip', name: 'IP Underlay', ip: '10.0.0.0', cidr: 8, networkType: 'bacnet-ip', scEnabled: true, scPrimaryHubName: 'Campus Hub', scPrimaryHubIp: '10.0.0.10', scPrimaryHubUri: 'wss://hub.example', scFailoverEnabled: true, scFailoverHubIp: '10.0.1.10', scFailoverHubUri: 'wss://hub-failover.example' }
     ]);
     expect(diagram.subnets).toHaveLength(1);
-    expect(diagram.infrastructure[0].kind).toBe('sc-hub-cluster');
-    expect(diagram.infrastructure[0].subnetIds).toEqual([diagram.subnets[0].id]);
-    expect(diagram.infrastructure[0].underlaySubnetIds).toEqual([diagram.subnets[0].id]);
+    const hub = diagram.infrastructure.find(item => item.kind === 'sc-hub-cluster');
+    expect(hub?.subnetIds).toEqual([diagram.subnets[0].id]);
+    expect(hub?.underlaySubnetIds).toEqual([diagram.subnets[0].id]);
     expect(getDiagramDiagnostics(diagram)).toEqual([]);
   });
 

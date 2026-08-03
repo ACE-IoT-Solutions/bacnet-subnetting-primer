@@ -879,7 +879,7 @@ const exportXlsx = () => {
   exportPlannerXlsx(subnets.value, splitHorizon.value);
 };
 const visualizePlan = () => {
-  localStorage.setItem('aceiot-network-diagram-v1', JSON.stringify(createDiagramProjectFromPlan(subnets.value)));
+  localStorage.setItem('aceiot-network-diagram-v1', JSON.stringify(createDiagramProjectFromPlan(subnets.value, splitHorizon.value)));
   window.dispatchEvent(new CustomEvent('ace-open-planned-diagram'));
 };
 </script>

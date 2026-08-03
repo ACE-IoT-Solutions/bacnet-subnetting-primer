@@ -1,5 +1,5 @@
-import { getSubnetDetails, ipToLong } from './subnet';
-import type { PlannerSubnet } from './planner';
+import { getSubnetDetails, getOffsetIp, ipToLong } from './subnet';
+import { getBmsHostOffset, isIpNetwork, type PlannerSubnet } from './planner';
 
 export type DeviceKind = 'controller' | 'workstation' | 'server' | 'sensor' | 'other';
 export type InfrastructureKind = 'router' | 'switch' | 'firewall' | 'bbmd' | 'gateway' | 'sc-hub' | 'sc-hub-cluster';
@@ -37,6 +37,7 @@ export interface DiagramDevice {
   ip?: string;
   additionalInterfaces?: DiagramDeviceAddress[];
   requiredForRouting?: boolean;
+  bbmdEnabled?: boolean;
   bacnetIpEnabled?: boolean;
   bacnetScEnabled?: boolean;
   scHubRole?: 'node' | 'hub' | 'ha-hub';
@@ -184,7 +185,7 @@ export function createDefaultProject(): DiagramProject {
   };
 }
 
-export function createDiagramProjectFromPlan(plan: PlannerSubnet[]): DiagramProject {
+export function createDiagramProjectFromPlan(plan: PlannerSubnet[], splitHorizon = false): DiagramProject {
   const idMap = new Map(plan.map(subnet => [subnet.id, `plan-${subnet.id}`]));
   const subnets = plan.map((source, index) => {
     const subnet = createSubnet(index + 1);
@@ -203,6 +204,74 @@ export function createDiagramProjectFromPlan(plan: PlannerSubnet[]): DiagramProj
     subnet.devices = [];
     return subnet;
   });
+  const ipSources = plan.filter(isIpNetwork);
+  const infrastructure: DiagramInfrastructure[] = [];
+
+  if (ipSources.length) {
+    const coreRouter = createInfrastructure(1);
+    coreRouter.name = 'Core Router';
+    coreRouter.kind = 'router';
+    coreRouter.subnetIds = ipSources.map(source => idMap.get(source.id)!);
+    coreRouter.notes = `Planned gateway interfaces: ${ipSources.map(source => `${source.name} ${getOffsetIp(source.ip, source.cidr, source.gatewayOffset) || 'address not set'}`).join(' · ')}`;
+    infrastructure.push(coreRouter);
+  }
+
+  for (const source of ipSources.filter(item => item.bbmdEnabled && !(item.bmsPlaced && item.bmsRole === 'bbmd'))) {
+    const bbmd = createInfrastructure(infrastructure.length + 1);
+    bbmd.name = `${source.name} BBMD`;
+    bbmd.kind = 'bbmd';
+    bbmd.ip = getOffsetIp(source.ip, source.cidr, source.bbmdOffset) || '';
+    bbmd.subnetIds = [idMap.get(source.id)!];
+    const targets = ipSources.filter(candidate => candidate.id !== source.id && candidate.bbmdEnabled
+      && (candidate.port || 47808) === (source.port || 47808)
+      && (!splitHorizon || source.routeTargets?.includes(candidate.id)));
+    bbmd.notes = targets.length
+      ? `Planned BDT peers: ${targets.map(target => target.name).join(', ')}`
+      : 'Local BBMD with no planned BDT peers';
+    infrastructure.push(bbmd);
+  }
+
+  const scHubs = ipSources.filter(item => item.scEnabled && item.scPrimaryHubName?.trim()).map(source => {
+    const hub = createInfrastructure(infrastructure.length + 1);
+    hub.name = source.scFailoverEnabled ? `${source.scPrimaryHubName} HA Cluster` : source.scPrimaryHubName!;
+    hub.kind = source.scFailoverEnabled ? 'sc-hub-cluster' : 'sc-hub';
+    hub.ip = source.scPrimaryHubIp || '';
+    hub.uri = source.scPrimaryHubUri || '';
+    hub.failoverIp = source.scFailoverHubIp || '';
+    hub.failoverUri = source.scFailoverHubUri || '';
+    hub.subnetIds = [idMap.get(source.id)!];
+    hub.underlaySubnetIds = [...hub.subnetIds];
+    hub.notes = source.scFailoverEnabled ? `Primary: ${source.scPrimaryHubName}; failover: ${source.scFailoverHubName || 'unnamed'}` : 'BACnet/SC primary hub';
+    return hub;
+  });
+  infrastructure.push(...scHubs);
+
+  const bmsSource = ipSources.find(item => item.bmsPlaced);
+  if (bmsSource) {
+    const bmsSubnet = subnets.find(item => item.id === idMap.get(bmsSource.id));
+    if (bmsSubnet) {
+      const bms = createDevice(bmsSubnet.devices.length + 1, bmsSubnet.id);
+      bms.name = bmsSource.bmsRole === 'bbmd' ? 'BMS Server / BBMD' : 'BMS Server';
+      bms.kind = 'server';
+      bms.bbmdEnabled = bmsSource.bmsRole === 'bbmd';
+      bms.nics[0].name = 'BMS network interface';
+      bms.nics[0].addresses[0].ip = getOffsetIp(bmsSource.ip, bmsSource.cidr, getBmsHostOffset(bmsSource)) || '';
+      bms.nics[0].bacnetIpEnabled = bmsSource.bmsUsesBacnetIp ?? true;
+      bms.nics[0].bacnetScEnabled = bmsSource.bmsUsesBacnetSc ?? false;
+      if (bms.nics[0].bacnetScEnabled) {
+        bms.nics[0].scHubId = scHubs.find(hub => hub.subnetIds.includes(bmsSubnet.id))?.id || '';
+        bms.nics[0].scHubL3Reachable = Boolean(bms.nics[0].scHubId);
+      }
+      const role = bmsSource.bmsRole === 'bbmd'
+        ? 'Hosts the local BBMD service'
+        : bmsSource.bmsRole === 'fdr'
+          ? `Foreign device registered to ${plan.find(item => item.id === bmsSource.fdrTargetSubnetId)?.name || 'an unassigned BBMD'}`
+          : 'Local BACnet supervisory host';
+      bms.notes = `${role} · imported from Network Planner`;
+      bmsSubnet.devices.push(bms);
+    }
+  }
+
   const routerByKey = new Map<string, DiagramDevice>();
   for (const source of plan.filter(item => item.networkType === 'mstp' || item.networkType === 'arcnet')) {
     const segment = subnets.find(item => item.id === idMap.get(source.id));
@@ -222,19 +291,6 @@ export function createDiagramProjectFromPlan(plan: PlannerSubnet[]): DiagramProj
     }
     segment.routerId = router.id;
   }
-  const infrastructure = plan.filter(item => (!item.networkType || item.networkType === 'bacnet-ip') && item.scEnabled && item.scPrimaryHubName?.trim()).map(source => {
-    const hub = createInfrastructure(subnets.length + 1);
-    hub.name = source.scFailoverEnabled ? `${source.scPrimaryHubName} HA Cluster` : source.scPrimaryHubName!;
-    hub.kind = source.scFailoverEnabled ? 'sc-hub-cluster' : 'sc-hub';
-    hub.ip = source.scPrimaryHubIp || '';
-    hub.uri = source.scPrimaryHubUri || '';
-    hub.failoverIp = source.scFailoverHubIp || '';
-    hub.failoverUri = source.scFailoverHubUri || '';
-    hub.subnetIds = [idMap.get(source.id)!];
-    hub.underlaySubnetIds = [...hub.subnetIds];
-    hub.notes = source.scFailoverEnabled ? `Primary: ${source.scPrimaryHubName}; failover: ${source.scFailoverHubName || 'unnamed'}` : 'BACnet/SC primary hub';
-    return hub;
-  });
   return { version: 1, title: 'Planned BACnet Network Topology', notes: 'Imported from Network Planner', subnets, infrastructure, paths: [], viewMode: 'networks' };
 }
 
@@ -554,6 +610,7 @@ export function isDiagramProject(value: unknown): value is DiagramProject {
     }));
     return typeof item.id === 'string' && typeof item.name === 'string' && (item.ip === undefined || typeof item.ip === 'string')
       && typeof item.notes === 'string' && (item.scHubId === undefined || typeof item.scHubId === 'string')
+      && (item.bbmdEnabled === undefined || typeof item.bbmdEnabled === 'boolean')
       && (item.scHubL3Reachable === undefined || typeof item.scHubL3Reachable === 'boolean')
       && (item.bacnetIpEnabled === undefined || typeof item.bacnetIpEnabled === 'boolean') && (item.bacnetScEnabled === undefined || typeof item.bacnetScEnabled === 'boolean')
       && (item.scHubRole === undefined || item.scHubRole === 'node' || item.scHubRole === 'hub' || item.scHubRole === 'ha-hub')

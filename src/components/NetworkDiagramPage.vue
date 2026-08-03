@@ -32,7 +32,7 @@
           </div>
           <div class="form-group">
             <label for="diagram-scope">Diagram scope</label>
-            <select id="diagram-scope" v-model="project.viewMode"><option value="detailed">Detailed — all devices</option><option value="networks">Network topology — routing devices only</option></select>
+            <select id="diagram-scope" v-model="project.viewMode"><option value="detailed">Detailed — all devices</option><option value="networks">Network topology — infrastructure &amp; key hosts</option></select>
           </div>
           <AceToggle v-model="advancedBacnetPorts" label="Advanced BACnet/IP ports" description="Configure multiple B/IP networks on one IP subnet" />
           <div class="form-group compact-group">
@@ -101,6 +101,7 @@
               <button class="row-remove-button" type="button" title="Remove device" @click="removeDevice(subnet, device.id)">×</button>
             </div>
             <AceToggle :model-value="Boolean(device.requiredForRouting)" label="BACnet router / bridge between datalinks" description="Route between services or networks assigned to this device's NICs" @update:model-value="device.requiredForRouting = $event" />
+            <AceToggle :model-value="Boolean(device.bbmdEnabled)" label="Hosts a BBMD service" description="Show this host as a combined device and BACnet Broadcast Management Device" @update:model-value="device.bbmdEnabled = $event" />
             <div class="interface-summary"><span>Network interfaces and assigned addresses</span><button type="button" @click="addDeviceNic(device, subnet.id)">+ Add NIC</button></div>
             <div v-for="(nic, nicIndex) in device.nics" :key="nic.id" class="nic-editor-card">
               <div class="nic-editor-heading">
@@ -228,8 +229,11 @@
             <text v-if="fieldHostNodes.length" class="layer-label" x="24" :y="fieldHostY - 10">FIELD DEVICES</text>
 
             <g v-for="(item, index) in project.infrastructure" :key="`preview-${item.id}`">
-              <path v-for="subnetId in validConnections(item)" :key="`${item.id}-${subnetId}`" class="connection" :d="connectionPath(index, item.id, subnetId)" />
-              <circle v-for="subnetId in validConnections(item)" :key="`dot-${item.id}-${subnetId}`" class="connection-dot" :cx="subnetCenter(subnetId)" :cy="subnetY" r="4" />
+              <g v-for="subnetId in validConnections(item)" :key="`${item.id}-${subnetId}`">
+                <title>{{ infrastructureConnectionLabel(item, subnetId) }}</title>
+                <path :class="['connection', connectionKindClass(item)]" :d="connectionPath(index, item.id, subnetId)" />
+                <circle :class="['connection-dot', `${connectionKindClass(item)}-dot`]" :cx="connectionTargetX(item.id, subnetId)" :cy="subnetY" r="4" />
+              </g>
               <g :transform="`translate(${infrastructureX(index) - 75}, 82)`">
                 <title>{{ item.name }}{{ item.ip ? ` — ${item.ip}` : '' }}</title>
                 <rect class="infra-box" width="150" height="72" rx="10" />
@@ -425,6 +429,7 @@ const STORAGE_KEY = 'aceiot-network-diagram-v1';
 const advancedBacnetPorts = inject<Ref<boolean>>('advancedBacnetPorts', ref(false));
 const TOOL_URL = 'https://ace-iot-solutions.github.io/bacnet-subnetting-primer/';
 const SVG_SC_LINK_STYLES = `.sc-service-link{fill:none;stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:8 6;opacity:.9}.sc-service-endpoint{fill:#2dd4bf;stroke:#121212;stroke-width:1}`;
+const SVG_CONNECTION_STYLES = `.connection--routing{stroke:#64748b;stroke-width:2.5}.connection--bbmd{stroke:#94d8ff;stroke-width:2.75;stroke-dasharray:9 6}.connection--sc{stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:2 6}.connection--local{stroke:#a78bfa;stroke-width:2}.connection--routing-dot{fill:#64748b}.connection--bbmd-dot{fill:#94d8ff}.connection--sc-dot{fill:#2dd4bf}.connection--local-dot{fill:#a78bfa}`;
 const SVG_EXPORT_STYLES = `.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2;stroke-linejoin:round}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-accent{fill:none;stroke-width:6;stroke-linecap:butt}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2}.address-endpoint{stroke:#121212;stroke-width:1}.test-path{fill:none;stroke-width:2.75;opacity:.78}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}`;
 const PDF_LIGHT_STYLES = `.export-bg{fill:#fff}.export-title,.infra-name,.subnet-name,.device-name,.path-legend-title{fill:#0f172a}.export-notes,.infra-ip,.subnet-meta,.device-kind,.host-address-label,.layer-label,.node-category,.path-route-label,.footer-label{fill:#475569}.connection{stroke:#64748b;stroke-width:2.25}.connection-dot{fill:#475569}.infra-box{fill:#fff;stroke:#0369a1;stroke-width:2.25}.infra-type{fill:#075985}.subnet-box{fill:#fff;stroke-width:2.25}.subnet-address,.host-address-summary,.path-route-text{fill:#0f172a}.host-box{fill:#fff;stroke:#64748b;stroke-width:1.75}.device-icon{fill:#e2e8f0;stroke:#cbd5e1}.ace-node-icon{fill:#0f766e}.address-endpoint{stroke:#fff}.path-legend-bg{fill:#fff;stroke:#64748b}.path-result-badge.success{fill:#dcfce7}.path-result-badge.failure{fill:#fee2e2}.path-result-text.success{fill:#166534}.path-result-text.failure{fill:#991b1b}.layer-label{font-size:9px;fill:#475569}.node-category{font-size:9.5px;fill:#475569}.infra-type{font-size:10.5px}.infra-name{font-size:13.5px}.infra-ip{font-size:11.5px}.subnet-name{font-size:15.5px}.subnet-address,.subnet-meta{font-size:11.5px}.device-name{font-size:13px}.device-kind{font-size:9.5px}.host-address-label{font-size:9px}.host-address-summary{font-size:11px}.host-count-text{font-size:7.5px}.path-route-label{font-size:9px}.path-route-text{font-size:10.5px}.footer-label{font-size:10.5px;fill:#334155}.ace-wordmark{fill:#0f172a}.solutions-wordmark{fill:#475569}`;
 const SUBNET_ACCENT_EXPORT_STYLES = `.subnet-accent{fill:var(--subnet-accent-color);stroke:none}`;
@@ -477,7 +482,7 @@ const ipSubnets = computed(() => project.value.subnets.filter(subnet => !subnet.
 const routedNetworks = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip' || subnet.networkType === 'bacnet-sc'));
 const fieldSegments = computed(() => project.value.subnets.filter(subnet => subnet.networkType === 'mstp' || subnet.networkType === 'arcnet'));
 const hostNodes = computed(() => project.value.subnets.flatMap(ownerSubnet => ownerSubnet.devices
-  .filter(device => project.value.viewMode !== 'networks' || device.requiredForRouting || project.value.subnets.some(segment => segment.routerId === device.id))
+  .filter(device => project.value.viewMode !== 'networks' || device.requiredForRouting || device.kind === 'server' || device.bbmdEnabled || project.value.subnets.some(segment => segment.routerId === device.id))
   .map(device => ({ device, ownerSubnet }))));
 const hostHeight = computed(() => Math.max(110, 80 + Math.max(1, ...hostNodes.value.map(host => addressCount(host.device))) * 30));
 const fieldBusY = computed(() => ipHostY + hostHeight.value + 70);
@@ -738,7 +743,7 @@ function deviceServiceLabel(device: DiagramDevice) {
   const hasIp = device.nics.some(nic => nic.bacnetIpEnabled);
   const hasSc = device.nics.some(nic => nic.bacnetScEnabled);
   const hasHub = device.nics.some(nic => nic.bacnetScEnabled && (nic.scHubRole === 'hub' || nic.scHubRole === 'ha-hub'));
-  return hasHub ? 'BACNET/SC HUB' : hasIp && hasSc ? 'BACNET/IP + SC' : hasSc ? 'BACNET/SC NODE' : hasIp ? 'BACNET/IP HOST' : 'IP HOST';
+  return device.bbmdEnabled ? (device.kind === 'server' ? 'BMS / BBMD' : 'BACNET/IP BBMD') : hasHub ? 'BACNET/SC HUB' : hasIp && hasSc ? 'BACNET/IP + SC' : hasSc ? 'BACNET/SC NODE' : hasIp ? 'BACNET/IP HOST' : 'IP HOST';
 }
 function addressEntryClass(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
@@ -788,12 +793,33 @@ function routingDevicesFor(segment: DiagramSubnet) {
 }
 function infrastructureX(index: number) { return canvasWidth.value * (index + 1) / (project.value.infrastructure.length + 1); }
 function validConnections(item: DiagramInfrastructure) { return item.subnetIds.filter(id => project.value.subnets.some(subnet => subnet.id === id)); }
+function connectionKindClass(item: DiagramInfrastructure) {
+  if (item.kind === 'router' || item.kind === 'gateway' || item.kind === 'firewall') return 'connection--routing';
+  if (item.kind === 'bbmd') return 'connection--bbmd';
+  if (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') return 'connection--sc';
+  return 'connection--local';
+}
+function connectionTargetX(itemId: string, subnetId: string) {
+  const connected = project.value.infrastructure.filter(item => validConnections(item).includes(subnetId));
+  const connectionIndex = connected.findIndex(item => item.id === itemId);
+  const offset = connectionIndex < 0 ? 0 : (connectionIndex - (connected.length - 1) / 2) * 18;
+  return subnetCenter(subnetId) + offset;
+}
+function infrastructureConnectionLabel(item: DiagramInfrastructure, subnetId: string) {
+  const subnet = project.value.subnets.find(candidate => candidate.id === subnetId);
+  const relation = item.kind === 'bbmd' ? 'BBMD local attachment' : item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster' ? 'BACnet/SC underlay' : item.kind === 'router' || item.kind === 'gateway' || item.kind === 'firewall' ? 'routed interface' : 'local attachment';
+  return `${item.name || 'Unnamed infrastructure'} → ${subnet?.name || 'missing network'} · ${relation}`;
+}
 function connectionPath(index: number, itemId: string, subnetId: string) {
   const item = project.value.infrastructure.find(candidate => candidate.id === itemId);
   if (!item) return '';
   const startX = infrastructureX(index);
-  const endX = subnetCenter(subnetId);
-  const laneY = 174 + index * 9;
+  const endX = connectionTargetX(itemId, subnetId);
+  if (item.kind === 'bbmd' || item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') {
+    const bendY = item.kind === 'bbmd' ? 184 + index * 3 : 176 + index * 3;
+    return `M ${startX} 154 C ${startX} ${bendY}, ${endX} ${bendY}, ${endX} ${subnetY}`;
+  }
+  const laneY = 174 + index * 11;
   return `M ${startX} 154 L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${subnetY}`;
 }
 function fieldBusRoutePath(segment: DiagramSubnet) {
@@ -958,7 +984,7 @@ function serializedDiagramSvg(theme: 'dark' | 'light' = 'dark', branded = false)
   clone.setAttribute('width', String(canvasWidth.value));
   clone.setAttribute('height', String(canvasHeight.value));
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-  style.textContent = `${SVG_EXPORT_STYLES}${SVG_SC_LINK_STYLES}${theme === 'light' ? PDF_LIGHT_STYLES : ''}${SUBNET_ACCENT_EXPORT_STYLES}`;
+  style.textContent = `${SVG_EXPORT_STYLES}${SVG_SC_LINK_STYLES}${SVG_CONNECTION_STYLES}${theme === 'light' ? PDF_LIGHT_STYLES : ''}${SUBNET_ACCENT_EXPORT_STYLES}`;
   clone.prepend(style);
   if (branded) {
     const appLogo = document.querySelector<SVGSVGElement>('.logo-icon-svg');
@@ -1065,6 +1091,7 @@ async function openJson(event: Event) {
 .subnet-accent{fill:var(--subnet-accent-color);stroke:none}
 .export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2.5}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2.5}.address-endpoint{stroke:#121212;stroke-width:1}.address-link-label{font:9px monospace;fill:#cbd5e1;paint-order:stroke;stroke:#121212;stroke-width:4px;stroke-linejoin:round}.test-path{fill:none;stroke-width:4;opacity:.9}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:9 6}.test-path-label-bg.success{fill:#0d3823;stroke:#14ae5c}.test-path-label-bg.failure{fill:#3d1719;stroke:#df1219}.test-path-label{font:700 9px Inter,Arial,sans-serif}.test-path-label.success{fill:#86efac}.test-path-label.failure{fill:#fca5a5}
 .connection{stroke-width:2;stroke-linejoin:round}.address-link{stroke-width:2}.test-path{stroke-width:2.75;opacity:.78}.test-path.failure{stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-text{font:600 9px Inter,Arial,sans-serif;fill:#cbd5e1}
+.connection--routing{stroke:#64748b;stroke-width:2.5}.connection--bbmd{stroke:#94d8ff;stroke-width:2.75;stroke-dasharray:9 6}.connection--sc{stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:2 6}.connection--local{stroke:#a78bfa;stroke-width:2}.connection--routing-dot{fill:#64748b}.connection--bbmd-dot{fill:#94d8ff}.connection--sc-dot{fill:#2dd4bf}.connection--local-dot{fill:#a78bfa}
 .sc-service-link{fill:none;stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:8 6;opacity:.9}.sc-service-endpoint{fill:#2dd4bf;stroke:#121212;stroke-width:1}
 .path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}
 </style>
