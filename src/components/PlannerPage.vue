@@ -3,21 +3,29 @@
 
     <!-- Planner Description -->
     <div class="glass-card" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1.5rem;">
-      <div style="display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 26px; height: 26px;">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <line x1="9" y1="3" x2="9" y2="21"></line>
-          <line x1="15" y1="3" x2="15" y2="21"></line>
-          <line x1="3" y1="9" x2="21" y2="9"></line>
-          <line x1="3" y1="15" x2="21" y2="15"></line>
-        </svg>
-        <h2 style="font-family: var(--font-heading); font-size: 1.35rem; color: #fff; margin: 0;">BACnet Network Planner</h2>
+      <div class="planner-heading-row">
+        <div class="planner-heading-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="9" y1="3" x2="9" y2="21"></line>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="3" y1="15" x2="21" y2="15"></line>
+          </svg>
+          <h2>BACnet Network Planner</h2>
+        </div>
+        <div class="planner-project-actions">
+          <AppButton size="sm" @click="plannerFileInput?.click()">Load plan</AppButton>
+          <AppButton size="sm" variant="secondary" @click="savePlannerProject">Save plan</AppButton>
+          <input ref="plannerFileInput" class="visually-hidden" type="file" accept="application/json,.json" @change="loadPlannerProject">
+        </div>
       </div>
       <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem; line-height: 1.55; max-width: 900px;">
         Design <GlossaryLink term="bacnet-ip">BACnet/IP</GlossaryLink>, <GlossaryLink term="bacnet-sc">BACnet/SC</GlossaryLink>,
         <GlossaryLink term="mstp">MS/TP</GlossaryLink>, and <GlossaryLink term="arcnet">ARCNET</GlossaryLink> networks, define their infrastructure
         and communications paths, and generate structured design spreadsheets and diagrams.
       </p>
+      <p v-if="plannerFileNotice" class="planner-file-notice" role="status">{{ plannerFileNotice }}</p>
     </div>
 
     <!-- Grid layout: left column for Subnet Config cards, right column for preview and download -->
@@ -386,9 +394,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, inject, type Ref } from 'vue';
-import { PlannerSubnet } from '../lib/planner';
 import { getSubnetDetails, getOffsetIp, ipToLong, longToIp } from '../lib/subnet';
-import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, getBmsHostOffset, isIpNetwork } from '../lib/planner';
+import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, createPlannerProject, getBmsHostOffset, isIpNetwork, isPlannerProject, type PlannerSubnet } from '../lib/planner';
 import { exportPlannerXlsx } from '../lib/export-xlsx';
 import { createDiagramProjectFromPlan } from '../lib/network-diagram';
 import AppButton from './AppButton.vue';
@@ -397,6 +404,8 @@ import GlossaryLink from './GlossaryLink.vue';
 import AceToggle from './AceToggle.vue';
 
 const splitHorizon = ref(false);
+const plannerFileInput = ref<HTMLInputElement | null>(null);
+const plannerFileNotice = ref('');
 const advancedBacnetPorts = inject<Ref<boolean>>('advancedBacnetPorts', ref(false));
 const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 
@@ -877,6 +886,35 @@ const sheetStructureData = computed(() => {
 // Trigger Excel download
 const exportXlsx = () => {
   exportPlannerXlsx(subnets.value, splitHorizon.value);
+};
+const savePlannerProject = () => {
+  const project = createPlannerProject(subnets.value, splitHorizon.value);
+  const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const planName = subnets.value[0]?.name || 'bacnet-network-plan';
+  const filename = planName.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'bacnet-network-plan';
+  link.href = url;
+  link.download = `${filename}-plan.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  plannerFileNotice.value = `Saved ${subnets.value.length} planned ${subnets.value.length === 1 ? 'network' : 'networks'} to ${link.download}.`;
+};
+const loadPlannerProject = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const parsed: unknown = JSON.parse(await file.text());
+    if (!isPlannerProject(parsed)) throw new Error('Unsupported planner file');
+    subnets.value = migrateLegacyScNetworks(parsed.subnets.map(subnet => normalizeNetwork({ ...subnet })));
+    splitHorizon.value = parsed.splitHorizon;
+    plannerFileNotice.value = `Loaded ${subnets.value.length} planned ${subnets.value.length === 1 ? 'network' : 'networks'} from ${file.name}.`;
+  } catch {
+    window.alert('That file is not a valid Ace IoT BACnet network plan.');
+  } finally {
+    input.value = '';
+  }
 };
 const visualizePlan = () => {
   localStorage.setItem('aceiot-network-diagram-v1', JSON.stringify(createDiagramProjectFromPlan(subnets.value, splitHorizon.value)));

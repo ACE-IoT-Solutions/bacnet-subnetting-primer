@@ -1129,6 +1129,13 @@ textarea {
 .eyebrow { color: var(--primary); font-family: var(--font-heading); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; margin-bottom: 0.4rem; }
 .diagram-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
 .diagram-actions .btn { min-width: auto; flex: none; white-space: nowrap; }
+.planner-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.planner-heading-title { display: flex; align-items: center; gap: 0.75rem; color: var(--primary); }
+.planner-heading-title svg { width: 26px; height: 26px; flex: none; }
+.planner-heading-title h2 { margin: 0; color: #fff; font: 700 1.35rem var(--font-heading); }
+.planner-project-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.planner-project-actions .btn { min-width: auto; flex: none; white-space: nowrap; }
+.planner-file-notice { margin: 0; padding: 0.55rem 0.7rem; border: 1px solid rgba(var(--secondary-rgb), 0.24); border-radius: var(--radius-sm); background: rgba(var(--secondary-rgb), 0.07); color: var(--secondary); font-size: 0.78rem; }
 .diagram-import-notice { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: -0.5rem 0 1rem; padding: 0.7rem 0.85rem; border: 1px solid rgba(20,174,92,.3); border-radius: var(--radius-md); background: var(--success-bg); color: #86efac; font-size: 0.78rem; }
 .diagram-import-notice button { display: grid; flex: 0 0 auto; place-items: center; width: 1.6rem; height: 1.6rem; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 1.1rem; }
 .diagram-import-notice button:hover { background: rgba(255,255,255,.07); }
@@ -1285,6 +1292,9 @@ textarea {
   .diagram-page-heading { align-items: flex-start; flex-direction: column; }
   .diagram-actions { justify-content: flex-start; width: 100%; }
   .diagram-actions .btn { flex: 1 1 calc(50% - 0.5rem); }
+  .planner-heading-row { align-items: flex-start; flex-direction: column; }
+  .planner-project-actions { width: 100%; }
+  .planner-project-actions .btn { flex: 1 1 calc(50% - 0.5rem); }
   .device-fields { grid-template-columns: 1fr; }
   .interface-editor-row { grid-template-columns: 1fr; padding-bottom: 0.5rem; }
   .editor-grid.two-columns { grid-template-columns: 1fr; }

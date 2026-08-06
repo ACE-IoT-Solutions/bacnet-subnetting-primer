@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, getBmsHostOffset, PlannerSubnet } from './planner';
+import { calculateAutoSizeCidr, findNextAvailableSubnetBlock, classifyOverlap, createPlannerProject, getBmsHostOffset, isPlannerProject, PlannerSubnet } from './planner';
 
 describe('Subnet Auto-sizing (calculateAutoSizeCidr)', () => {
   it('should auto-size to /27 for small device counts', () => {
@@ -112,5 +112,25 @@ describe('BMS address assignment', () => {
     expect(getBmsHostOffset(subnet)).toBe(10);
     subnet.bmsRole = 'fdr';
     expect(getBmsHostOffset(subnet)).toBe(20);
+  });
+});
+
+describe('planner project files', () => {
+  const subnet: PlannerSubnet = {
+    id: 'saved-subnet', name: 'Saved subnet', ip: '10.20.0.0', cidr: 24, gatewayOffset: 1,
+    vlan: 20, port: 47808, bbmdEnabled: true, bbmdOffset: 10, bmsPlaced: true,
+    bmsRole: 'bbmd', fdrTargetSubnetId: '', routeTargets: []
+  };
+
+  it('creates and recognizes a versioned planner project', () => {
+    const project = createPlannerProject([subnet], true);
+    expect(project.kind).toBe('ace-bacnet-network-plan');
+    expect(project.splitHorizon).toBe(true);
+    expect(isPlannerProject(JSON.parse(JSON.stringify(project)))).toBe(true);
+  });
+
+  it('rejects unrelated or incomplete JSON files', () => {
+    expect(isPlannerProject({ version: 1, kind: 'ace-bacnet-network-plan', splitHorizon: false, subnets: [{ name: 'Missing fields' }] })).toBe(false);
+    expect(isPlannerProject({ version: 1, kind: 'diagram', splitHorizon: false, subnets: [subnet] })).toBe(false);
   });
 });

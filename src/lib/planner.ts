@@ -49,6 +49,37 @@ export interface PlannerState {
   subnets: PlannerSubnet[];
 }
 
+export interface PlannerProject extends PlannerState {
+  version: 1;
+  kind: 'ace-bacnet-network-plan';
+}
+
+export function createPlannerProject(subnets: PlannerSubnet[], splitHorizon: boolean): PlannerProject {
+  return { version: 1, kind: 'ace-bacnet-network-plan', splitHorizon, subnets };
+}
+
+export function isPlannerProject(value: unknown): value is PlannerProject {
+  if (!value || typeof value !== 'object') return false;
+  const project = value as Partial<PlannerProject>;
+  if (project.version !== 1 || project.kind !== 'ace-bacnet-network-plan' || typeof project.splitHorizon !== 'boolean' || !Array.isArray(project.subnets)) return false;
+
+  return project.subnets.every(subnet => {
+    if (!subnet || typeof subnet !== 'object') return false;
+    const item = subnet as Partial<PlannerSubnet>;
+    const vlanValid = item.vlan === '' || typeof item.vlan === 'number';
+    const portValid = item.port === '' || typeof item.port === 'number';
+    const networkTypeValid = item.networkType === undefined || ['bacnet-ip', 'bacnet-sc', 'mstp', 'arcnet'].includes(item.networkType);
+    const stringArrayValid = (list: unknown) => list === undefined || (Array.isArray(list) && list.every(entry => typeof entry === 'string'));
+    return typeof item.id === 'string' && typeof item.name === 'string' && typeof item.ip === 'string'
+      && typeof item.cidr === 'number' && item.cidr >= 0 && item.cidr <= 32
+      && typeof item.gatewayOffset === 'number' && vlanValid && portValid
+      && typeof item.bbmdEnabled === 'boolean' && typeof item.bbmdOffset === 'number'
+      && typeof item.bmsPlaced === 'boolean' && (item.bmsRole === 'none' || item.bmsRole === 'bbmd' || item.bmsRole === 'fdr')
+      && typeof item.fdrTargetSubnetId === 'string' && networkTypeValid
+      && stringArrayValid(item.routeTargets) && stringArrayValid(item.scUnderlaySubnetIds);
+  });
+}
+
 /**
  * Calculates optimized CIDR based on planned devices count
  * with 20% headroom and at least 10 spare IPs (minimum size /27)
