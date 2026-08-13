@@ -9,6 +9,7 @@
           and infrastructure. The diagram updates as you edit it.</p>
       </div>
       <div class="diagram-actions">
+        <AppButton @click="openBbmdStateDialog">Import BBMD state</AppButton>
         <AppButton @click="openNmapImportDialog">Import Nmap</AppButton>
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
         <AppButton @click="saveJson">Save project</AppButton>
@@ -35,6 +36,7 @@
             <select id="diagram-scope" v-model="project.viewMode"><option value="detailed">Detailed — all devices</option><option value="networks">Network topology — infrastructure &amp; key hosts</option></select>
           </div>
           <AceToggle v-model="advancedBacnetPorts" label="Advanced BACnet/IP ports" description="Configure multiple B/IP networks on one IP subnet" />
+          <AceToggle :model-value="Boolean(project.allowSplitHorizonBdt)" label="Allow split-horizon BDTs" description="Treat intentional one-way BDT entries as valid and suppress missing-mutual-peer warnings" @update:model-value="project.allowSplitHorizonBdt = $event" />
           <div class="form-group compact-group">
             <label for="diagram-notes">Condition / troubleshooting notes</label>
             <textarea id="diagram-notes" v-model="project.notes" rows="3" placeholder="Describe symptoms, expected traffic, or the condition being illustrated."></textarea>
@@ -47,7 +49,7 @@
           <button class="icon-text-button" type="button" @click="addSubnet">+ Add network</button>
         </div>
 
-        <article v-for="(subnet, subnetIndex) in project.subnets" :key="subnet.id" class="glass-card subnet-editor-card" :style="{ '--subnet-color': subnet.color }">
+        <article v-for="(subnet, subnetIndex) in project.subnets" :id="`config-subnet-${subnet.id}`" :key="subnet.id" tabindex="-1" class="glass-card subnet-editor-card config-target" :class="{ 'config-target-active': activeConfigTarget === `subnet-${subnet.id}` }" :style="{ '--subnet-color': subnet.color }">
           <div class="editor-card-header">
             <strong>{{ subnet.name || `Subnet ${subnetIndex + 1}` }}</strong>
             <button class="remove-button" type="button" title="Remove subnet" @click="removeSubnet(subnet.id)">Remove</button>
@@ -89,7 +91,7 @@
             <button class="icon-text-button small" type="button" @click="addDevice(subnet)">+ Device</button>
           </div>
           <div v-if="!subnet.devices.length" class="empty-editor-state">No devices yet. Add the equipment involved in this condition.</div>
-          <div v-for="device in subnet.devices" :key="device.id" class="device-editor-block">
+          <div v-for="device in subnet.devices" :id="`config-device-${device.id}`" :key="device.id" tabindex="-1" class="device-editor-block config-target" :class="{ 'config-target-active': activeConfigTarget === `device-${device.id}` }">
             <div class="device-editor-row">
               <div class="device-fields">
                 <input v-model="device.name" type="text" aria-label="Device name" placeholder="Device name">
@@ -100,8 +102,35 @@
               </div>
               <button class="row-remove-button" type="button" title="Remove device" @click="removeDevice(subnet, device.id)">×</button>
             </div>
+            <div class="device-secondary-actions">
+              <button class="device-move-button" type="button" :disabled="!movableSubnets(subnet).length" :title="movableSubnets(subnet).length ? 'Move this device and its local addresses to another subnet' : 'Add another compatible subnet before moving this device'" @click="openMoveDeviceDialog(device, subnet)">Move to subnet</button>
+            </div>
             <AceToggle :model-value="Boolean(device.requiredForRouting)" label="BACnet router / bridge between datalinks" description="Route between services or networks assigned to this device's NICs" @update:model-value="device.requiredForRouting = $event" />
-            <AceToggle :model-value="Boolean(device.bbmdEnabled)" label="Hosts a BBMD service" description="Show this host as a combined device and BACnet Broadcast Management Device" @update:model-value="device.bbmdEnabled = $event" />
+            <AceToggle v-if="(!subnet.networkType || subnet.networkType === 'bacnet-ip') && device.nics.some(nic => nic.bacnetIpEnabled)" :model-value="Boolean(device.bbmdEnabled)" label="Hosts a BBMD service" description="This BACnet device also distributes BACnet/IP broadcasts" @update:model-value="setDeviceBbmd(device, $event)" />
+            <details v-if="device.bbmdEnabled" class="device-relationship-editor bdt-peer-editor">
+              <summary>
+                <span>Broadcast Distribution Table</span>
+                <em>{{ device.bdtPeerDeviceIds?.length ?? 0 }} {{ (device.bdtPeerDeviceIds?.length ?? 0) === 1 ? 'peer' : 'peers' }}</em>
+              </summary>
+              <div class="bdt-peer-editor-body">
+                <span class="field-hint">Select a BBMD to create or remove a mutual BDT relationship.</span>
+                <span v-if="!otherBbmdDevices(device, subnet.id).length" class="field-hint">Enable BBMD service on a device in another IP subnet to create BDT relationships.</span>
+                <div v-else class="subnet-checkboxes">
+                  <label v-for="peer in otherBbmdDevices(device, subnet.id)" :key="peer.device.id" class="checkbox-chip">
+                    <input type="checkbox" :checked="isBdtPeer(device, peer.device.id)" @change="toggleBdtPeer(device, peer.device.id)">
+                    <span>{{ peer.device.name }} · {{ peer.subnet.name }}</span>
+                  </label>
+                </div>
+              </div>
+            </details>
+            <div v-if="(!subnet.networkType || subnet.networkType === 'bacnet-ip') && device.nics.some(nic => nic.bacnetIpEnabled)" class="device-relationship-editor">
+              <label :for="`fdr-target-${device.id}`">Foreign Device Registration</label>
+              <select :id="`fdr-target-${device.id}`" v-model="device.foreignDeviceBbmdId">
+                <option value="">Not registered as a foreign device</option>
+                <option v-for="target in foreignBbmdOptions(device, subnet.id)" :key="target.device.id" :value="target.device.id">{{ target.device.name }} · {{ target.subnet.name }}</option>
+              </select>
+              <span class="field-hint">Registers this device with a BBMD on another IP subnet and adds it to that BBMD's Foreign Device Table.</span>
+            </div>
             <div class="interface-summary"><span>Network interfaces and assigned addresses</span><button type="button" @click="addDeviceNic(device, subnet.id)">+ Add NIC</button></div>
             <div v-for="(nic, nicIndex) in device.nics" :key="nic.id" class="nic-editor-card">
               <div class="nic-editor-heading">
@@ -128,8 +157,8 @@
           <div><span class="step-number">2</span><h3>IT infrastructure</h3></div>
           <button class="icon-text-button" type="button" @click="addInfrastructure">+ Add infrastructure</button>
         </div>
-        <div v-if="!project.infrastructure.length" class="glass-card empty-editor-state infrastructure-empty">Add routers, switches, firewalls, gateways, BBMDs, or BACnet/SC hubs and connect them to the relevant networks.</div>
-        <article v-for="item in project.infrastructure" :key="item.id" class="glass-card infrastructure-editor-card">
+        <div v-if="!project.infrastructure.length" class="glass-card empty-editor-state infrastructure-empty">Add routers, switches, firewalls, gateways, or BACnet/SC hubs and connect them to the relevant networks. BBMD service is configured on BACnet devices above.</div>
+        <article v-for="item in project.infrastructure" :id="`config-infrastructure-${item.id}`" :key="item.id" tabindex="-1" class="glass-card infrastructure-editor-card config-target" :class="{ 'config-target-active': activeConfigTarget === `infrastructure-${item.id}` }">
           <div class="editor-card-header">
             <strong>{{ item.name || 'Unnamed infrastructure' }}</strong>
             <button class="remove-button" type="button" @click="removeInfrastructure(item.id)">Remove</button>
@@ -163,7 +192,7 @@
           <button class="icon-text-button" type="button" :disabled="endpointOptions.length < 2" @click="addPath">+ Add path</button>
         </div>
         <div v-if="!project.paths.length" class="glass-card empty-editor-state infrastructure-empty">Add a ping or service test, order its endpoints and intermediate hops, then mark the observed result.</div>
-        <article v-for="path in project.paths" :key="path.id" class="glass-card path-editor-card" :class="path.outcome">
+        <article v-for="path in project.paths" :id="`config-path-${path.id}`" :key="path.id" tabindex="-1" class="glass-card path-editor-card config-target" :class="[path.outcome, { 'config-target-active': activeConfigTarget === `path-${path.id}` }]">
           <div class="editor-card-header">
             <strong>{{ path.name || 'Unnamed connectivity test' }}</strong>
             <button class="remove-button" type="button" @click="removePath(path.id)">Remove</button>
@@ -200,20 +229,46 @@
       </aside>
 
       <main class="diagram-preview-column">
-        <div v-if="diagnostics.length" class="diagnostics-panel">
-          <div v-for="diagnostic in diagnostics" :key="diagnostic.message" :class="['diagnostic-item', diagnostic.level]">
-            <span>{{ diagnostic.level === 'error' ? '!' : '△' }}</span>{{ diagnostic.message }}
+        <div v-if="diagnostics.length" class="diagnostics-panel" aria-label="Diagram findings">
+          <div class="diagnostics-summary">
+            <span><strong>{{ diagnostics.length }}</strong> findings in {{ diagnosticGroups.length }} {{ diagnosticGroups.length === 1 ? 'class' : 'classes' }}</span>
+            <small>Expand a class to inspect individual items.</small>
           </div>
+          <details v-for="group in diagnosticGroups" :key="group.key" :class="['diagnostic-group', group.level]">
+            <summary>
+              <span class="diagnostic-group-icon">{{ group.level === 'error' ? '!' : '△' }}</span>
+              <span class="diagnostic-group-copy"><strong>{{ group.title }}</strong><small>{{ group.description }}</small></span>
+              <span class="diagnostic-group-counts">
+                <em v-if="group.errorCount" class="error">{{ group.errorCount }} {{ group.errorCount === 1 ? 'error' : 'errors' }}</em>
+                <em v-if="group.warningCount" class="warning">{{ group.warningCount }} {{ group.warningCount === 1 ? 'warning' : 'warnings' }}</em>
+              </span>
+            </summary>
+            <div class="diagnostic-group-items">
+              <div v-for="diagnostic in group.items" :key="diagnostic.message" :class="['diagnostic-item', diagnostic.level]">
+                <span>{{ diagnostic.level === 'error' ? '!' : '△' }}</span>{{ diagnostic.message }}
+              </div>
+            </div>
+          </details>
         </div>
         <div class="diagram-preview-toolbar">
           <div><strong>Live preview</strong><span>{{ project.subnets.length }} subnets · {{ deviceCount }} devices · {{ project.infrastructure.length }} infrastructure · {{ project.paths.length }} tests</span></div>
-          <button type="button" class="reset-button" @click="resetProject">Reset example</button>
+          <div class="diagram-preview-controls">
+            <label for="diagram-layout-mode">Layout</label>
+            <select id="diagram-layout-mode" v-model="layoutMode">
+              <option value="compact">Compact grid · 4 across</option>
+              <option value="balanced">Balanced grid · 8 across</option>
+              <option value="wide">Wide rows · no wrapping</option>
+            </select>
+            <button type="button" class="reset-button" @click="resetProject">Reset example</button>
+          </div>
         </div>
         <div class="diagram-scroll-frame">
           <svg ref="diagramSvg" class="network-diagram-svg" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" :width="canvasWidth" :height="canvasHeight" xmlns="http://www.w3.org/2000/svg" role="img" :aria-label="project.title">
             <defs>
               <marker id="path-arrow-success" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#14ae5c" /></marker>
               <marker id="path-arrow-failure" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#df1219" /></marker>
+              <marker id="bdt-arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#a78bfa" /></marker>
+              <marker id="fdr-arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#fb923c" /></marker>
               <symbol id="ace-icon-network" viewBox="0 0 24 24"><path d="M17 3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4v2h1a1 1 0 0 1 1 1h7v2h-7a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1H2v-2h7a1 1 0 0 1 1-1h1v-2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10Z" /></symbol>
               <symbol id="ace-icon-subnet" viewBox="0 0 24 24"><path d="M23.25 12.75v-1.5h-10.5V9h2.625A1.125 1.125 0 0 0 16.5 7.875v-6A1.125 1.125 0 0 0 15.375.75h-6.75A1.125 1.125 0 0 0 7.5 1.875v6A1.125 1.125 0 0 0 8.625 9h2.625v2.25H.75v1.5H4.5V15H1.94a1.125 1.125 0 0 0-1.125 1.125v6A1.125 1.125 0 0 0 1.94 23.25h6.685A1.125 1.125 0 0 0 9.75 22.125v-6A1.125 1.125 0 0 0 8.625 15H6v-2.25h12V15h-2.625a1.125 1.125 0 0 0-1.125 1.125v6a1.125 1.125 0 0 0 1.125 1.125h6.75a1.125 1.125 0 0 0 1.125-1.125v-6A1.125 1.125 0 0 0 22.125 15H19.5v-2.25h3.75ZM9 2.25h6V7.5H9Zm-.75 19.5H2.315V16.5H8.25Zm13.5 0h-6V16.5h6Z" /></symbol>
               <symbol id="ace-icon-device" viewBox="0 0 24 24"><path d="M13 18h1a1 1 0 0 1 1 1h7v2h-7a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1H2v-2h7a1 1 0 0 1 1-1h1v-2H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3v2Zm0-12h1V4h-1v2ZM9 4v2h2V4H9Zm0 4v2h2V8H9Zm0 4v2h2v-2H9Z" /></symbol>
@@ -232,9 +287,9 @@
               <g v-for="subnetId in validConnections(item)" :key="`${item.id}-${subnetId}`">
                 <title>{{ infrastructureConnectionLabel(item, subnetId) }}</title>
                 <path :class="['connection', connectionKindClass(item)]" :d="connectionPath(index, item.id, subnetId)" />
-                <circle :class="['connection-dot', `${connectionKindClass(item)}-dot`]" :cx="connectionTargetX(item.id, subnetId)" :cy="subnetY" r="4" />
+                <circle :class="['connection-dot', `${connectionKindClass(item)}-dot`]" :cx="connectionTargetX(item.id, subnetId)" :cy="connectionTargetY(subnetId)" r="4" />
               </g>
-              <g :transform="`translate(${infrastructureX(index) - 75}, 82)`">
+              <g class="diagram-node-action" role="button" tabindex="0" :aria-label="`Edit infrastructure ${item.name || 'Unnamed infrastructure'}`" :transform="`translate(${infrastructureX(index) - 75}, ${infrastructureY(index)})`" @click="focusConfig('infrastructure', item.id)" @keydown.enter.prevent="focusConfig('infrastructure', item.id)" @keydown.space.prevent="focusConfig('infrastructure', item.id)">
                 <title>{{ item.name }}{{ item.ip ? ` — ${item.ip}` : '' }}</title>
                 <rect class="infra-box" width="150" height="72" rx="10" />
               <text class="infra-type" x="12" y="18">{{ item.kind.toUpperCase() }}</text>
@@ -246,7 +301,7 @@
 
             <g v-for="segment in fieldSegments" :key="`route-${segment.id}`">
               <path v-if="segment.upstreamSubnetId" class="connection field-bus-route" :d="fieldBusRoutePath(segment)" />
-              <text v-if="segment.routerId" class="address-link-label" :x="networkCenter(segment.id)" :y="fieldBusY - 18" text-anchor="middle">via {{ clipped(routerName(segment.routerId), 28) }}</text>
+              <text v-if="segment.routerId" class="address-link-label" :x="networkCenter(segment.id)" :y="networkY(segment) - 18" text-anchor="middle">via {{ clipped(routerName(segment.routerId), 28) }}</text>
             </g>
 
             <g v-for="link in addressLinks" :key="link.id">
@@ -261,8 +316,21 @@
               <circle class="sc-service-endpoint" :cx="link.startX" :cy="link.startY" r="3.5" />
               <circle class="sc-service-endpoint" :cx="link.endX" :cy="link.endY" r="3.5" />
             </g>
+            <g v-for="link in bdtLinks" :key="link.id">
+              <title>{{ link.label }}</title>
+              <path class="bdt-link" :d="link.path" :marker-end="link.mutual ? undefined : 'url(#bdt-arrow)'" />
+              <circle class="bdt-endpoint" :cx="link.startX" :cy="link.startY" r="4" />
+              <circle class="bdt-endpoint" :cx="link.endX" :cy="link.endY" r="4" />
+              <text class="relationship-link-label bdt" :x="link.labelX" :y="link.labelY" text-anchor="middle">{{ link.mutual ? 'MUTUAL BDT' : 'BDT ENTRY' }}</text>
+            </g>
+            <g v-for="link in fdrLinks" :key="link.id">
+              <title>{{ link.label }}</title>
+              <path class="fdr-link" :d="link.path" marker-end="url(#fdr-arrow)" />
+              <circle class="fdr-endpoint" :cx="link.startX" :cy="link.startY" r="4" />
+              <text class="relationship-link-label fdr" :x="link.labelX" :y="link.labelY" text-anchor="middle">FDR</text>
+            </g>
 
-            <g v-for="(subnet, subnetIndex) in project.subnets" :key="`preview-${subnet.id}`" :transform="`translate(${networkX(subnet)}, ${networkY(subnet)})`">
+            <g v-for="(subnet, subnetIndex) in project.subnets" :key="`preview-${subnet.id}`" class="diagram-node-action" role="button" tabindex="0" :aria-label="`Edit network ${subnet.name || `Subnet ${subnetIndex + 1}`}`" :transform="`translate(${networkX(subnet)}, ${networkY(subnet)})`" @click="focusConfig('subnet', subnet.id)" @keydown.enter.prevent="focusConfig('subnet', subnet.id)" @keydown.space.prevent="focusConfig('subnet', subnet.id)">
               <title>{{ subnet.name }} — {{ subnetCidr(subnet) }}{{ subnet.vlan ? ` — VLAN ${subnet.vlan}` : '' }}</title>
               <rect class="subnet-box" :width="subnetWidth" :height="subnetHeight" rx="14" :stroke="subnet.color" />
               <path class="subnet-accent" :d="roundedTopAccentPath(subnetWidth)" :style="{ '--subnet-accent-color': subnet.color }" />
@@ -274,12 +342,12 @@
               <text class="subnet-meta subnet-footer-meta" x="16" y="92">{{ subnetMetaLabel(subnet) }}</text>
             </g>
 
-            <g v-for="(host, hostIndex) in hostNodes" :key="`host-${host.device.id}`" :transform="`translate(${hostX(host, hostIndex)}, ${hostYFor(host)})`">
+            <g v-for="(host, hostIndex) in hostNodes" :key="`host-${host.device.id}`" class="diagram-node-action" role="button" tabindex="0" :aria-label="`Edit device ${host.device.name || 'Unnamed device'}`" :transform="`translate(${hostX(host, hostIndex)}, ${hostYFor(host)})`" @click="focusConfig('device', host.device.id)" @keydown.enter.prevent="focusConfig('device', host.device.id)" @keydown.space.prevent="focusConfig('device', host.device.id)">
               <title>{{ deviceTooltip(host.device) }}</title>
               <rect class="host-box" :width="hostWidth" :height="hostHeight" rx="12" />
               <text class="node-category" x="16" y="21">{{ deviceServiceLabel(host.device) }}</text>
               <circle class="device-icon" cx="25" cy="45" r="15" />
-              <use :href="host.device.requiredForRouting ? '#ace-icon-router' : '#ace-icon-device'" class="ace-node-icon host-node-icon" x="15" y="35" width="20" height="20" />
+              <use :href="host.device.requiredForRouting ? '#ace-icon-router' : host.device.bbmdEnabled ? '#ace-icon-network' : '#ace-icon-device'" class="ace-node-icon host-node-icon" x="15" y="35" width="20" height="20" />
               <text class="device-name" x="47" y="42">{{ clipped(host.device.name || 'Unnamed device', 25) }}</text>
               <text class="device-kind" x="47" y="58">{{ host.device.kind }}</text>
               <g v-for="(row, addressIndex) in hostAddressRows(host.device)" :key="row.id">
@@ -296,7 +364,7 @@
             </g>
             <g v-if="pathLegends.length">
               <text class="layer-label" x="40" :y="legendStart - 14">CONNECTIVITY TESTS</text>
-              <g v-for="legend in pathLegends" :key="`legend-${legend.id}`" :transform="`translate(${legend.x}, ${legend.y})`">
+              <g v-for="legend in pathLegends" :key="`legend-${legend.id}`" class="diagram-node-action" role="button" tabindex="0" :aria-label="`Edit connectivity test ${legend.name}`" :transform="`translate(${legend.x}, ${legend.y})`" @click="focusConfig('path', legend.id)" @keydown.enter.prevent="focusConfig('path', legend.id)" @keydown.space.prevent="focusConfig('path', legend.id)">
                 <rect :class="['path-legend-bg', legend.outcome]" :width="legendCardWidth" :height="legendCardHeight(legend)" rx="9" />
                 <circle :class="['path-legend-dot', legend.outcome]" cx="16" cy="17" r="4" />
                 <text class="path-legend-title" x="28" y="21">{{ clipped(`${legend.name} · ${legend.protocol}`, legendTextLimit - 10) }}</text>
@@ -378,6 +446,67 @@
       </div>
     </dialog>
 
+    <dialog ref="bbmdStateDialog" class="nmap-import-dialog" aria-labelledby="bbmd-state-import-title">
+      <div class="pdf-export-dialog-header">
+        <div>
+          <p class="eyebrow">BACNET BROADCAST TOPOLOGY</p>
+          <h3 id="bbmd-state-import-title">Import ACE BBMD Manager state</h3>
+        </div>
+        <button class="pdf-dialog-close" type="button" aria-label="Close BBMD state import" @click="bbmdStateDialog?.close()">×</button>
+      </div>
+      <p class="pdf-export-description">
+        Upload an ACE BBMD Manager <code>.state</code> file to create device-level BBMDs and their observed BDT relationships. The state store does not contain subnet definitions, so every distinct BBMD network is initially inferred as a <strong>/24</strong> for you to review and correct.
+      </p>
+
+      <label class="bbmd-state-file-picker">
+        <span>State-store file</span>
+        <input type="file" accept=".state,application/json" @change="readBbmdStateFile">
+      </label>
+
+      <p v-if="bbmdStateError" class="bbmd-state-error" role="alert">{{ bbmdStateError }}</p>
+      <div v-else-if="bbmdStatePreview" class="nmap-import-preview" aria-live="polite">
+        <div class="nmap-import-summary">
+          <span><strong>{{ bbmdStatePreview.records.length }}</strong> BBMD devices</span>
+          <span><strong>{{ bbmdStateSubnetCount }}</strong> inferred /24 networks</span>
+          <span><strong>{{ bbmdStatePreview.reciprocalBdtPairs }}</strong> mutual BDT pairs</span>
+        </div>
+        <div class="bbmd-state-findings">
+          <p v-if="bbmdStatePreview.oneWayBdtEntries"><strong>{{ bbmdStatePreview.oneWayBdtEntries }}</strong> one-way BDT {{ bbmdStatePreview.oneWayBdtEntries === 1 ? 'entry' : 'entries' }} will be preserved and flagged in diagram diagnostics.</p>
+          <p v-if="bbmdStatePreview.unresolvedBdtEntries"><strong>{{ bbmdStatePreview.unresolvedBdtEntries }}</strong> BDT {{ bbmdStatePreview.unresolvedBdtEntries === 1 ? 'target is' : 'targets are' }} not present as scanned BBMD records and cannot be linked.</p>
+          <p v-if="bbmdStatePreview.ignoredRecords"><strong>{{ bbmdStatePreview.ignoredRecords }}</strong> malformed {{ bbmdStatePreview.ignoredRecords === 1 ? 'record was' : 'records were' }} ignored.</p>
+          <p><strong>Review required:</strong> overlapping or incorrectly grouped devices should be corrected by editing the imported network addresses and prefixes.</p>
+        </div>
+      </div>
+      <p v-else class="nmap-import-empty">Choose a state-store file to preview its BBMD and BDT topology.</p>
+
+      <div class="pdf-export-dialog-actions">
+        <AppButton @click="bbmdStateDialog?.close()">Cancel</AppButton>
+        <AppButton variant="primary" :disabled="!bbmdStatePreview?.records.length" @click="importBbmdState">Replace diagram with imported topology</AppButton>
+      </div>
+    </dialog>
+
+    <dialog ref="moveDeviceDialog" class="pdf-export-dialog move-device-dialog" aria-labelledby="move-device-title">
+      <div class="pdf-export-dialog-header">
+        <div>
+          <p class="eyebrow">REASSIGN DEVICE</p>
+          <h3 id="move-device-title">Move {{ movingDevice?.name || 'device' }} to another subnet</h3>
+        </div>
+        <button class="pdf-dialog-close" type="button" aria-label="Close move-device dialog" @click="moveDeviceDialog?.close()">×</button>
+      </div>
+      <p class="pdf-export-description">The complete device configuration, relationships, and IDs will be preserved. Addresses assigned to the current owner subnet will follow the device; their IP values will not be changed.</p>
+      <div class="form-group">
+        <label for="move-device-target">Destination subnet</label>
+        <select id="move-device-target" v-model="moveTargetSubnetId">
+          <option v-for="target in moveTargetSubnets" :key="target.id" :value="target.id">{{ target.name || 'Unnamed subnet' }} — {{ subnetCidr(target) }}</option>
+        </select>
+        <span class="field-hint">If an existing address falls outside the destination prefix, the diagram will flag it for correction.</span>
+      </div>
+      <div class="pdf-export-dialog-actions">
+        <AppButton @click="moveDeviceDialog?.close()">Cancel</AppButton>
+        <AppButton variant="primary" :disabled="!moveTargetSubnetId" @click="confirmMoveDevice">Move device</AppButton>
+      </div>
+    </dialog>
+
     <dialog ref="pdfExportDialog" class="pdf-export-dialog" aria-labelledby="pdf-export-title">
       <div class="pdf-export-dialog-header">
         <div>
@@ -409,7 +538,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import AppButton from './AppButton.vue';
 import AceToggle from './AceToggle.vue';
 import AceCheckbox from './AceCheckbox.vue';
@@ -418,20 +547,24 @@ import { getSubnetDetails, ipToLong } from '../lib/subnet';
 import {
   groupNmapHostsBySubnet, isNmapGatewayHost, nmapHostName, parseNmapOutput, type NmapHost, type NmapSubnetGroup
 } from '../lib/nmap-import';
+import { createDiagramProjectFromAceBbmdState, parseAceBbmdState, type AceBbmdStateImport } from '../lib/ace-bbmd-state';
+import { groupDiagramDiagnostics } from '../lib/diagram-diagnostics';
 import {
   addressState, createDefaultProject, createDevice, createDeviceAddress, createInfrastructure, createNic, createSubnet,
-  createTestPath, getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, normalizeDiagramProject, subnetCidr,
+  createTestPath, getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, moveDeviceToSubnet, normalizeDiagramProject, subnetCidr,
   type DeviceKind, type DiagramDevice, type DiagramDeviceAddress, type DiagramInfrastructure, type DiagramNic,
   type DiagramProject, type DiagramSubnet, type DiagramTestPath
 } from '../lib/network-diagram';
 
 const STORAGE_KEY = 'aceiot-network-diagram-v1';
+const LAYOUT_STORAGE_KEY = 'aceiot-network-diagram-layout-v1';
 const advancedBacnetPorts = inject<Ref<boolean>>('advancedBacnetPorts', ref(false));
 const TOOL_URL = 'https://ace-iot-solutions.github.io/bacnet-subnetting-primer/';
 const SVG_SC_LINK_STYLES = `.sc-service-link{fill:none;stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:8 6;opacity:.9}.sc-service-endpoint{fill:#2dd4bf;stroke:#121212;stroke-width:1}`;
+const SVG_BACNET_RELATIONSHIP_STYLES = `.bdt-link{fill:none;stroke:#a78bfa;stroke-width:3;stroke-dasharray:10 5}.bdt-endpoint{fill:#a78bfa;stroke:#121212;stroke-width:1}.fdr-link{fill:none;stroke:#fb923c;stroke-width:2.75;stroke-dasharray:3 6}.fdr-endpoint{fill:#fb923c;stroke:#121212;stroke-width:1}.relationship-link-label{font:700 8px Inter,Arial,sans-serif;letter-spacing:.8px;paint-order:stroke;stroke:#121212;stroke-width:4px;stroke-linejoin:round}.relationship-link-label.bdt{fill:#c4b5fd}.relationship-link-label.fdr{fill:#fdba74}`;
 const SVG_CONNECTION_STYLES = `.connection--routing{stroke:#64748b;stroke-width:2.5}.connection--bbmd{stroke:#94d8ff;stroke-width:2.75;stroke-dasharray:9 6}.connection--sc{stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:2 6}.connection--local{stroke:#a78bfa;stroke-width:2}.connection--routing-dot{fill:#64748b}.connection--bbmd-dot{fill:#94d8ff}.connection--sc-dot{fill:#2dd4bf}.connection--local-dot{fill:#a78bfa}`;
 const SVG_EXPORT_STYLES = `.export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2;stroke-linejoin:round}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-accent{fill:none;stroke-width:6;stroke-linecap:butt}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2}.address-endpoint{stroke:#121212;stroke-width:1}.test-path{fill:none;stroke-width:2.75;opacity:.78}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}`;
-const PDF_LIGHT_STYLES = `.export-bg{fill:#fff}.export-title,.infra-name,.subnet-name,.device-name,.path-legend-title{fill:#0f172a}.export-notes,.infra-ip,.subnet-meta,.device-kind,.host-address-label,.layer-label,.node-category,.path-route-label,.footer-label{fill:#475569}.connection{stroke:#64748b;stroke-width:2.25}.connection-dot{fill:#475569}.infra-box{fill:#fff;stroke:#0369a1;stroke-width:2.25}.infra-type{fill:#075985}.subnet-box{fill:#fff;stroke-width:2.25}.subnet-address,.host-address-summary,.path-route-text{fill:#0f172a}.host-box{fill:#fff;stroke:#64748b;stroke-width:1.75}.device-icon{fill:#e2e8f0;stroke:#cbd5e1}.ace-node-icon{fill:#0f766e}.address-endpoint{stroke:#fff}.path-legend-bg{fill:#fff;stroke:#64748b}.path-result-badge.success{fill:#dcfce7}.path-result-badge.failure{fill:#fee2e2}.path-result-text.success{fill:#166534}.path-result-text.failure{fill:#991b1b}.layer-label{font-size:9px;fill:#475569}.node-category{font-size:9.5px;fill:#475569}.infra-type{font-size:10.5px}.infra-name{font-size:13.5px}.infra-ip{font-size:11.5px}.subnet-name{font-size:15.5px}.subnet-address,.subnet-meta{font-size:11.5px}.device-name{font-size:13px}.device-kind{font-size:9.5px}.host-address-label{font-size:9px}.host-address-summary{font-size:11px}.host-count-text{font-size:7.5px}.path-route-label{font-size:9px}.path-route-text{font-size:10.5px}.footer-label{font-size:10.5px;fill:#334155}.ace-wordmark{fill:#0f172a}.solutions-wordmark{fill:#475569}`;
+const PDF_LIGHT_STYLES = `.export-bg{fill:#fff}.export-title,.infra-name,.subnet-name,.device-name,.path-legend-title{fill:#0f172a}.export-notes,.infra-ip,.subnet-meta,.device-kind,.host-address-label,.layer-label,.node-category,.path-route-label,.footer-label{fill:#475569}.connection{stroke:#64748b;stroke-width:2.25}.connection-dot{fill:#475569}.infra-box{fill:#fff;stroke:#0369a1;stroke-width:2.25}.infra-type{fill:#075985}.subnet-box{fill:#fff;stroke-width:2.25}.subnet-address,.host-address-summary,.path-route-text{fill:#0f172a}.host-box{fill:#fff;stroke:#64748b;stroke-width:1.75}.device-icon{fill:#e2e8f0;stroke:#cbd5e1}.ace-node-icon{fill:#0f766e}.address-endpoint,.bdt-endpoint,.fdr-endpoint{stroke:#fff}.relationship-link-label{stroke:#fff}.path-legend-bg{fill:#fff;stroke:#64748b}.path-result-badge.success{fill:#dcfce7}.path-result-badge.failure{fill:#fee2e2}.path-result-text.success{fill:#166534}.path-result-text.failure{fill:#991b1b}.layer-label{font-size:9px;fill:#475569}.node-category{font-size:9.5px}.infra-type{font-size:10.5px}.infra-name{font-size:13.5px}.infra-ip{font-size:11.5px}.subnet-name{font-size:15.5px}.subnet-address,.subnet-meta{font-size:11.5px}.device-name{font-size:13px}.device-kind{font-size:9.5px}.host-address-label{font-size:9px}.host-address-summary{font-size:11px}.host-count-text{font-size:7.5px}.path-route-label{font-size:9px}.path-route-text{font-size:10.5px}.footer-label{font-size:10.5px;fill:#334155}.ace-wordmark{fill:#0f172a}.solutions-wordmark{fill:#475569}`;
 const SUBNET_ACCENT_EXPORT_STYLES = `.subnet-accent{fill:var(--subnet-accent-color);stroke:none}`;
 const project = ref<DiagramProject>(createDefaultProject());
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -440,15 +573,26 @@ const nmapImportDialog = ref<HTMLDialogElement | null>(null);
 const nmapOutput = ref('');
 const nmapCidr = ref(24);
 const nmapImportNotice = ref('');
+const bbmdStateDialog = ref<HTMLDialogElement | null>(null);
+const bbmdStatePreview = ref<AceBbmdStateImport | null>(null);
+const bbmdStateError = ref('');
+const moveDeviceDialog = ref<HTMLDialogElement | null>(null);
+const movingDeviceId = ref('');
+const moveSourceSubnetId = ref('');
+const moveTargetSubnetId = ref('');
 const pdfExportDialog = ref<HTMLDialogElement | null>(null);
 const isExportingPdf = ref(false);
 const pdfTheme = ref<'dark' | 'light'>('light');
+type DiagramLayoutMode = 'compact' | 'balanced' | 'wide';
+type ConfigTargetKind = 'subnet' | 'device' | 'infrastructure' | 'path';
+const layoutMode = ref<DiagramLayoutMode>('compact');
+const activeConfigTarget = ref('');
+let configTargetTimer: ReturnType<typeof window.setTimeout> | undefined;
 const subnetWidth = 240;
 const subnetHeight = 104;
-const subnetY = 210;
-const ipHostY = 350;
 const hostWidth = 280;
 const hostGap = 12;
+const layoutGap = 28;
 const cidrOptions = Array.from({ length: 25 }, (_, index) => index + 8);
 const mstpBaudRates = [9600, 19200, 38400, 76800, 115200];
 const deviceKindOptions: { value: DeviceKind; label: string }[] = [
@@ -457,12 +601,18 @@ const deviceKindOptions: { value: DeviceKind; label: string }[] = [
 ];
 const infrastructureKindOptions = [
   { value: 'router', label: 'Router' }, { value: 'switch', label: 'Switch' }, { value: 'firewall', label: 'Firewall' },
-  { value: 'bbmd', label: 'BBMD' }, { value: 'gateway', label: 'Gateway' },
+  { value: 'gateway', label: 'Gateway' },
   { value: 'sc-hub', label: 'BACnet/SC Hub' }, { value: 'sc-hub-cluster', label: 'BACnet/SC HA Hub Cluster' }
 ];
 interface HostNode { device: DiagramDevice; ownerSubnet: DiagramSubnet }
 
 const diagnostics = computed(() => getDiagramDiagnostics(project.value));
+const diagnosticGroups = computed(() => groupDiagramDiagnostics(diagnostics.value));
+const movingDevice = computed(() => project.value.subnets.flatMap(subnet => subnet.devices).find(device => device.id === movingDeviceId.value));
+const moveTargetSubnets = computed(() => {
+  const source = project.value.subnets.find(subnet => subnet.id === moveSourceSubnetId.value);
+  return source ? movableSubnets(source) : [];
+});
 const deviceCount = computed(() => project.value.subnets.reduce((total, subnet) => total + subnet.devices.length, 0));
 const nmapHosts = computed(() => parseNmapOutput(nmapOutput.value));
 const nmapGroups = computed(() => groupNmapHostsBySubnet(nmapHosts.value, nmapCidr.value));
@@ -478,17 +628,30 @@ const nmapNodeCount = computed(() => new Set(nmapHosts.value.map(host => {
   if (isNmapGatewayHost(host)) return `gateway:${host.ip}`;
   return host.hostname ? `host:${host.hostname.toLocaleLowerCase()}` : `host:${host.ip}`;
 })).size);
+const bbmdStateSubnetCount = computed(() => new Set((bbmdStatePreview.value?.records ?? []).map(record => record.ip.split('.').slice(0, 3).join('.'))).size);
 const ipSubnets = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip'));
 const routedNetworks = computed(() => project.value.subnets.filter(subnet => !subnet.networkType || subnet.networkType === 'bacnet-ip' || subnet.networkType === 'bacnet-sc'));
 const fieldSegments = computed(() => project.value.subnets.filter(subnet => subnet.networkType === 'mstp' || subnet.networkType === 'arcnet'));
 const hostNodes = computed(() => project.value.subnets.flatMap(ownerSubnet => ownerSubnet.devices
-  .filter(device => project.value.viewMode !== 'networks' || device.requiredForRouting || device.kind === 'server' || device.bbmdEnabled || project.value.subnets.some(segment => segment.routerId === device.id))
+  .filter(device => project.value.viewMode !== 'networks' || device.requiredForRouting || device.kind === 'server' || device.bbmdEnabled || device.foreignDeviceBbmdId || project.value.subnets.some(segment => segment.routerId === device.id))
   .map(device => ({ device, ownerSubnet }))));
 const hostHeight = computed(() => Math.max(110, 80 + Math.max(1, ...hostNodes.value.map(host => addressCount(host.device))) * 30));
-const fieldBusY = computed(() => ipHostY + hostHeight.value + 70);
-const fieldHostY = computed(() => fieldBusY.value + subnetHeight + 60);
 const ipHostNodes = computed(() => hostNodes.value.filter(host => !host.ownerSubnet.networkType || host.ownerSubnet.networkType === 'bacnet-ip' || host.ownerSubnet.networkType === 'bacnet-sc'));
 const fieldHostNodes = computed(() => hostNodes.value.filter(host => host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet'));
+const hasBacnetRelationships = computed(() => hostNodes.value.some(host => (host.device.bdtPeerDeviceIds ?? []).length > 0 || Boolean(host.device.foreignDeviceBbmdId)));
+const layoutColumnLimit = computed(() => layoutMode.value === 'compact' ? 4 : layoutMode.value === 'balanced' ? 8 : Number.POSITIVE_INFINITY);
+function columnCount(count: number) { return Math.max(1, Math.min(count || 1, layoutColumnLimit.value)); }
+function rowCount(count: number) { return count ? Math.ceil(count / columnCount(count)) : 0; }
+const infrastructureRows = computed(() => rowCount(project.value.infrastructure.length));
+const routedNetworkRows = computed(() => rowCount(routedNetworks.value.length));
+const ipHostRows = computed(() => rowCount(ipHostNodes.value.length));
+const fieldNetworkRows = computed(() => rowCount(fieldSegments.value.length));
+const fieldHostRows = computed(() => rowCount(fieldHostNodes.value.length));
+const subnetY = computed(() => Math.max(210, 82 + infrastructureRows.value * 96 + 32));
+const ipHostY = computed(() => subnetY.value + Math.max(1, routedNetworkRows.value) * (subnetHeight + layoutGap) + 42);
+const fieldBusY = computed(() => ipHostY.value + Math.max(1, ipHostRows.value) * (hostHeight.value + layoutGap) + (hasBacnetRelationships.value ? 170 : 70));
+const fieldHostY = computed(() => fieldBusY.value + Math.max(1, fieldNetworkRows.value) * (subnetHeight + layoutGap) + 42);
+const ipHostLayerBottom = computed(() => ipHostY.value + ipHostRows.value * (hostHeight.value + layoutGap) - layoutGap);
 const endpointOptions = computed(() => [
   ...project.value.infrastructure.map(item => ({ id: item.id, nodeId: item.id, label: `${item.name || 'Unnamed infrastructure'} — ${item.ip || 'IP not set'} (${item.kind})` })),
   ...hostNodes.value.flatMap(host => host.device.nics.flatMap(nic => nic.addresses.map(address => {
@@ -500,29 +663,43 @@ const endpointOptions = computed(() => [
     };
   })))
 ]);
+function rowPixelWidth(count: number, itemWidth: number, gap: number) {
+  const columns = columnCount(count);
+  return columns * itemWidth + Math.max(0, columns - 1) * gap;
+}
 const canvasWidth = computed(() => Math.max(
   960,
-  80 + project.value.subnets.length * 275,
-  80 + Math.max(ipHostNodes.value.length, fieldHostNodes.value.length) * (hostWidth + hostGap),
-  80 + project.value.infrastructure.length * 190
+  80 + rowPixelWidth(Math.max(routedNetworks.value.length, fieldSegments.value.length), subnetWidth, layoutGap),
+  80 + rowPixelWidth(Math.max(ipHostNodes.value.length, fieldHostNodes.value.length), hostWidth, hostGap),
+  80 + rowPixelWidth(project.value.infrastructure.length, 150, 40)
 ));
 const legendColumns = computed(() => canvasWidth.value >= 1250 ? 2 : 1);
 const legendCardWidth = computed(() => (canvasWidth.value - 80 - (legendColumns.value - 1) * 20) / legendColumns.value);
 const legendTextLimit = computed(() => Math.max(32, Math.floor((legendCardWidth.value - 90) / 6.3)));
 const legendRows = computed(() => Math.ceil(project.value.paths.length / legendColumns.value));
-const legendStart = computed(() => fieldHostNodes.value.length ? fieldHostY.value + hostHeight.value + 75 + project.value.paths.length * 18 : ipHostNodes.value.length ? ipHostY + hostHeight.value + 75 + project.value.paths.length * 18 : 330);
+const legendStart = computed(() => fieldHostNodes.value.length
+  ? fieldHostY.value + fieldHostRows.value * (hostHeight.value + layoutGap) + 47 + project.value.paths.length * 18
+  : ipHostNodes.value.length
+    ? ipHostY.value + ipHostRows.value * (hostHeight.value + layoutGap) + (hasBacnetRelationships.value ? 147 : 47) + project.value.paths.length * 18
+    : subnetY.value + Math.max(1, routedNetworkRows.value) * (subnetHeight + layoutGap) + 40);
 const canvasHeight = computed(() => Math.max(hostNodes.value.length ? 625 : 430, legendStart.value + legendRows.value * 124 + 42));
 
 onMounted(() => {
+  const savedLayout = localStorage.getItem(LAYOUT_STORAGE_KEY);
+  if (savedLayout === 'compact' || savedLayout === 'balanced' || savedLayout === 'wide') layoutMode.value = savedLayout;
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return;
-  try {
-    const parsed: unknown = JSON.parse(saved);
-    if (isDiagramProject(parsed)) project.value = normalizeDiagramProject(parsed);
-  } catch { /* Ignore incomplete browser storage. */ }
+  if (saved) {
+    try {
+      const parsed: unknown = JSON.parse(saved);
+      if (isDiagramProject(parsed)) project.value = normalizeDiagramProject(parsed);
+    } catch { /* Ignore incomplete browser storage. */ }
+  }
   window.addEventListener('ace-open-planned-diagram', loadPlannedDiagram);
 });
-onUnmounted(() => window.removeEventListener('ace-open-planned-diagram', loadPlannedDiagram));
+onUnmounted(() => {
+  window.removeEventListener('ace-open-planned-diagram', loadPlannedDiagram);
+  if (configTargetTimer !== undefined) window.clearTimeout(configTargetTimer);
+});
 
 function loadPlannedDiagram() {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -534,8 +711,71 @@ function loadPlannedDiagram() {
 }
 
 watch(project, value => localStorage.setItem(STORAGE_KEY, JSON.stringify(value)), { deep: true });
+watch(layoutMode, value => localStorage.setItem(LAYOUT_STORAGE_KEY, value));
+
+async function focusConfig(kind: ConfigTargetKind, id: string) {
+  const targetKey = `${kind}-${id}`;
+  activeConfigTarget.value = targetKey;
+  await nextTick();
+  const target = document.getElementById(`config-${targetKey}`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  target.focus({ preventScroll: true });
+  if (configTargetTimer !== undefined) window.clearTimeout(configTargetTimer);
+  configTargetTimer = window.setTimeout(() => {
+    if (activeConfigTarget.value === targetKey) activeConfigTarget.value = '';
+  }, 2200);
+}
 
 function addSubnet() { project.value.subnets.push(createSubnet(project.value.subnets.length + 1)); }
+function movableSubnets(source: DiagramSubnet) {
+  const sourceType = normalizedNetworkType(source);
+  return project.value.subnets.filter(candidate => candidate.id !== source.id && normalizedNetworkType(candidate) === sourceType);
+}
+function openMoveDeviceDialog(device: DiagramDevice, source: DiagramSubnet) {
+  const targets = movableSubnets(source);
+  if (!targets.length) return;
+  movingDeviceId.value = device.id;
+  moveSourceSubnetId.value = source.id;
+  moveTargetSubnetId.value = targets[0].id;
+  moveDeviceDialog.value?.showModal();
+}
+async function confirmMoveDevice() {
+  const deviceId = movingDeviceId.value;
+  if (!deviceId || !moveTargetSubnetId.value || !moveDeviceToSubnet(project.value, deviceId, moveTargetSubnetId.value)) return;
+  moveDeviceDialog.value?.close();
+  await focusConfig('device', deviceId);
+}
+function openBbmdStateDialog() {
+  bbmdStatePreview.value = null;
+  bbmdStateError.value = '';
+  bbmdStateDialog.value?.showModal();
+}
+async function readBbmdStateFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  bbmdStatePreview.value = null;
+  bbmdStateError.value = '';
+  if (!file) return;
+  try {
+    const parsedJson: unknown = JSON.parse(await file.text());
+    const parsedState = parseAceBbmdState(parsedJson);
+    if (!parsedState.records.length) throw new Error('No valid BBMD records were found.');
+    bbmdStatePreview.value = parsedState;
+  } catch (error) {
+    bbmdStateError.value = error instanceof Error ? error.message : 'The selected file is not a valid ACE BBMD Manager state store.';
+  } finally {
+    input.value = '';
+  }
+}
+function importBbmdState() {
+  if (!bbmdStatePreview.value?.records.length) return;
+  project.value = createDiagramProjectFromAceBbmdState(bbmdStatePreview.value);
+  const importedCount = bbmdStatePreview.value.records.length;
+  const subnetCount = project.value.subnets.length;
+  nmapImportNotice.value = `Imported ${importedCount} device-level BBMD${importedCount === 1 ? '' : 's'} across ${subnetCount} inferred /24 ${subnetCount === 1 ? 'network' : 'networks'}. Review and correct subnet definitions where needed.`;
+  bbmdStateDialog.value?.close();
+}
 function openNmapImportDialog() {
   nmapImportNotice.value = '';
   nmapImportDialog.value?.showModal();
@@ -622,6 +862,7 @@ function formatNmapLatency(seconds: number) {
   return `${milliseconds < 0.01 ? milliseconds.toFixed(3) : milliseconds < 1 ? milliseconds.toFixed(2) : milliseconds.toFixed(1)} ms`;
 }
 function removeSubnet(id: string) {
+  const removedDeviceIds = new Set(project.value.subnets.find(subnet => subnet.id === id)?.devices.map(device => device.id) ?? []);
   const removedEndpointIds = project.value.subnets.flatMap(subnet => subnet.devices.flatMap(device =>
     device.nics.flatMap(nic => nic.addresses.filter(address => subnet.id === id || address.subnetId === id).map(address => address.id))
   ));
@@ -631,6 +872,8 @@ function removeSubnet(id: string) {
     item.underlaySubnetIds = (item.underlaySubnetIds ?? []).filter(subnetId => subnetId !== id);
   });
   project.value.subnets.forEach(subnet => subnet.devices.forEach(device => {
+    device.bdtPeerDeviceIds = (device.bdtPeerDeviceIds ?? []).filter(peerId => !removedDeviceIds.has(peerId));
+    if (removedDeviceIds.has(device.foreignDeviceBbmdId ?? '')) device.foreignDeviceBbmdId = '';
     device.nics.forEach(nic => { nic.addresses = nic.addresses.filter(address => address.subnetId !== id); });
     device.nics = device.nics.filter(nic => nic.addresses.length > 0);
     if (!device.nics.length) device.nics.push(createNic(subnet.id));
@@ -642,6 +885,10 @@ function removeDevice(subnet: DiagramSubnet, id: string) {
   const device = subnet.devices.find(item => item.id === id);
   const removedEndpointIds = device ? allAddresses(device).map(address => address.id) : [];
   subnet.devices = subnet.devices.filter(device => device.id !== id);
+  project.value.subnets.forEach(owner => owner.devices.forEach(candidate => {
+    candidate.bdtPeerDeviceIds = (candidate.bdtPeerDeviceIds ?? []).filter(peerId => peerId !== id);
+    if (candidate.foreignDeviceBbmdId === id) candidate.foreignDeviceBbmdId = '';
+  }));
   removeEndpointsFromPaths(removedEndpointIds);
 }
 function addDeviceNic(device: DiagramDevice, defaultSubnetId: string) { device.nics.push(createNic(defaultSubnetId, device.nics.length + 1)); }
@@ -734,6 +981,35 @@ function displayAddress(address: DiagramDeviceAddress) {
 }
 function scHubsFor(networkId: string) { return project.value.infrastructure.filter(item => (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') && item.subnetIds.includes(networkId)); }
 function otherScHubs(id: string) { return project.value.infrastructure.filter(item => item.id !== id && (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster')); }
+function bbmdDeviceEntries() {
+  return project.value.subnets.flatMap(subnet => subnet.devices.filter(device => device.bbmdEnabled).map(device => ({ device, subnet })));
+}
+function otherBbmdDevices(device: DiagramDevice, subnetId: string) {
+  return bbmdDeviceEntries().filter(entry => entry.device.id !== device.id && entry.subnet.id !== subnetId);
+}
+function foreignBbmdOptions(device: DiagramDevice, subnetId: string) {
+  return bbmdDeviceEntries().filter(entry => entry.device.id !== device.id && entry.subnet.id !== subnetId);
+}
+function isBdtPeer(device: DiagramDevice, peerId: string) { return (device.bdtPeerDeviceIds ?? []).includes(peerId); }
+function toggleBdtPeer(device: DiagramDevice, peerId: string) {
+  const peer = project.value.subnets.flatMap(subnet => subnet.devices).find(candidate => candidate.id === peerId && candidate.bbmdEnabled);
+  if (!peer) return;
+  device.bdtPeerDeviceIds ??= [];
+  peer.bdtPeerDeviceIds ??= [];
+  const enabled = !device.bdtPeerDeviceIds.includes(peerId);
+  device.bdtPeerDeviceIds = enabled ? [...device.bdtPeerDeviceIds, peerId] : device.bdtPeerDeviceIds.filter(id => id !== peerId);
+  peer.bdtPeerDeviceIds = enabled ? [...new Set([...peer.bdtPeerDeviceIds, device.id])] : peer.bdtPeerDeviceIds.filter(id => id !== device.id);
+}
+function setDeviceBbmd(device: DiagramDevice, enabled: boolean) {
+  device.bbmdEnabled = enabled;
+  device.bdtPeerDeviceIds ??= [];
+  if (enabled) return;
+  device.bdtPeerDeviceIds = [];
+  project.value.subnets.forEach(subnet => subnet.devices.forEach(candidate => {
+    candidate.bdtPeerDeviceIds = (candidate.bdtPeerDeviceIds ?? []).filter(id => id !== device.id);
+    if (candidate.foreignDeviceBbmdId === device.id) candidate.foreignDeviceBbmdId = '';
+  }));
+}
 function scHubsForNic(currentNic: DiagramNic) {
   const infrastructure = project.value.infrastructure.filter(item => item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster').map(item => ({ id: item.id, name: item.name, label: item.kind === 'sc-hub-cluster' ? 'HA infrastructure hub' : 'infrastructure hub' }));
   const deviceHubs = hostNodes.value.flatMap(host => host.device.nics.filter(nic => nic.id !== currentNic.id && nic.bacnetScEnabled && (nic.scHubRole === 'hub' || nic.scHubRole === 'ha-hub')).map(nic => ({ id: nic.id, name: `${host.device.name} · ${nic.name}`, label: nic.scHubRole === 'ha-hub' ? 'device HA hub' : 'device hub' })));
@@ -743,7 +1019,10 @@ function deviceServiceLabel(device: DiagramDevice) {
   const hasIp = device.nics.some(nic => nic.bacnetIpEnabled);
   const hasSc = device.nics.some(nic => nic.bacnetScEnabled);
   const hasHub = device.nics.some(nic => nic.bacnetScEnabled && (nic.scHubRole === 'hub' || nic.scHubRole === 'ha-hub'));
-  return device.bbmdEnabled ? (device.kind === 'server' ? 'BMS / BBMD' : 'BACNET/IP BBMD') : hasHub ? 'BACNET/SC HUB' : hasIp && hasSc ? 'BACNET/IP + SC' : hasSc ? 'BACNET/SC NODE' : hasIp ? 'BACNET/IP HOST' : 'IP HOST';
+  return device.bbmdEnabled
+    ? device.requiredForRouting ? 'BACNET ROUTER / BBMD' : device.kind === 'server' ? 'BMS / BBMD' : 'BACNET/IP BBMD'
+    : device.foreignDeviceBbmdId ? 'BACNET/IP FOREIGN DEVICE'
+      : hasHub ? 'BACNET/SC HUB' : hasIp && hasSc ? 'BACNET/IP + SC' : hasSc ? 'BACNET/SC NODE' : hasIp ? 'BACNET/IP HOST' : 'IP HOST';
 }
 function addressEntryClass(address: DiagramDeviceAddress) {
   const subnet = project.value.subnets.find(item => item.id === address.subnetId);
@@ -769,12 +1048,33 @@ function roundedTopAccentPath(width: number) {
   return `M 14 0 H ${width - 14} A 14 14 0 0 1 ${width} 14 H ${width - 6} A 8 8 0 0 0 ${width - 14} 6 H 14 A 8 8 0 0 0 6 14 H 0 A 14 14 0 0 1 14 0 Z`;
 }
 function deviceSymbol(kind: DeviceKind) { return kind === 'controller' ? 'C' : kind === 'workstation' ? 'W' : kind === 'server' ? 'S' : kind === 'sensor' ? '•' : '?'; }
-function rowX(index: number, count: number) { return canvasWidth.value * (index + 1) / (count + 1) - subnetWidth / 2; }
+function gridPoint(index: number, count: number, itemWidth: number, gap: number, startY: number, rowHeight: number) {
+  const columns = columnCount(count);
+  const row = Math.floor(Math.max(0, index) / columns);
+  const column = Math.max(0, index) % columns;
+  const itemsInRow = Math.min(columns, Math.max(0, count - row * columns));
+  const rowWidth = itemsInRow * itemWidth + Math.max(0, itemsInRow - 1) * gap;
+  return {
+    x: (canvasWidth.value - rowWidth) / 2 + column * (itemWidth + gap),
+    y: startY + row * rowHeight
+  };
+}
 function networkX(subnet: DiagramSubnet) {
   const row = subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldSegments.value : routedNetworks.value;
-  return rowX(row.findIndex(item => item.id === subnet.id), row.length);
+  return gridPoint(row.findIndex(item => item.id === subnet.id), row.length, subnetWidth, layoutGap, 0, 0).x;
 }
-function networkY(subnet: DiagramSubnet) { return subnet.networkType === 'mstp' || subnet.networkType === 'arcnet' ? fieldBusY.value : subnetY; }
+function networkY(subnet: DiagramSubnet) {
+  const isFieldNetwork = subnet.networkType === 'mstp' || subnet.networkType === 'arcnet';
+  const row = isFieldNetwork ? fieldSegments.value : routedNetworks.value;
+  return gridPoint(
+    row.findIndex(item => item.id === subnet.id),
+    row.length,
+    subnetWidth,
+    layoutGap,
+    isFieldNetwork ? fieldBusY.value : subnetY.value,
+    subnetHeight + layoutGap
+  ).y;
+}
 function networkCenter(id: string) { const subnet = project.value.subnets.find(item => item.id === id); return subnet ? networkX(subnet) + subnetWidth / 2 : 0; }
 function subnetCenter(id: string) { return networkCenter(id); }
 function hostRow(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostNodes.value : ipHostNodes.value; }
@@ -782,16 +1082,21 @@ function hostX(host: HostNode, fallbackIndex = 0) {
   const row = hostRow(host);
   const index = row.findIndex(item => item.device.id === host.device.id);
   const resolvedIndex = index < 0 ? fallbackIndex : index;
-  const rowWidth = row.length * hostWidth + Math.max(0, row.length - 1) * hostGap;
-  return (canvasWidth.value - rowWidth) / 2 + resolvedIndex * (hostWidth + hostGap);
+  return gridPoint(resolvedIndex, row.length, hostWidth, hostGap, 0, 0).x;
 }
-function hostYFor(host: HostNode) { return host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet' ? fieldHostY.value : ipHostY; }
+function hostYFor(host: HostNode) {
+  const row = hostRow(host);
+  const index = row.findIndex(item => item.device.id === host.device.id);
+  const isFieldHost = host.ownerSubnet.networkType === 'mstp' || host.ownerSubnet.networkType === 'arcnet';
+  return gridPoint(index, row.length, hostWidth, hostGap, isFieldHost ? fieldHostY.value : ipHostY.value, hostHeight.value + layoutGap).y;
+}
 function routingDevicesFor(segment: DiagramSubnet) {
   return hostNodes.value.flatMap(host => host.device.nics.flatMap(nic => nic.addresses
     .filter(address => address.subnetId === segment.upstreamSubnetId)
     .map(address => ({ id: host.device.id, name: host.device.name || 'Unnamed device', ip: address.ip }))));
 }
-function infrastructureX(index: number) { return canvasWidth.value * (index + 1) / (project.value.infrastructure.length + 1); }
+function infrastructureX(index: number) { return gridPoint(index, project.value.infrastructure.length, 150, 40, 82, 96).x + 75; }
+function infrastructureY(index: number) { return gridPoint(index, project.value.infrastructure.length, 150, 40, 82, 96).y; }
 function validConnections(item: DiagramInfrastructure) { return item.subnetIds.filter(id => project.value.subnets.some(subnet => subnet.id === id)); }
 function connectionKindClass(item: DiagramInfrastructure) {
   if (item.kind === 'router' || item.kind === 'gateway' || item.kind === 'firewall') return 'connection--routing';
@@ -805,6 +1110,10 @@ function connectionTargetX(itemId: string, subnetId: string) {
   const offset = connectionIndex < 0 ? 0 : (connectionIndex - (connected.length - 1) / 2) * 18;
   return subnetCenter(subnetId) + offset;
 }
+function connectionTargetY(subnetId: string) {
+  const subnet = project.value.subnets.find(candidate => candidate.id === subnetId);
+  return subnet ? networkY(subnet) : subnetY.value;
+}
 function infrastructureConnectionLabel(item: DiagramInfrastructure, subnetId: string) {
   const subnet = project.value.subnets.find(candidate => candidate.id === subnetId);
   const relation = item.kind === 'bbmd' ? 'BBMD local attachment' : item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster' ? 'BACnet/SC underlay' : item.kind === 'router' || item.kind === 'gateway' || item.kind === 'firewall' ? 'routed interface' : 'local attachment';
@@ -814,22 +1123,23 @@ function connectionPath(index: number, itemId: string, subnetId: string) {
   const item = project.value.infrastructure.find(candidate => candidate.id === itemId);
   if (!item) return '';
   const startX = infrastructureX(index);
+  const startY = infrastructureY(index) + 72;
   const endX = connectionTargetX(itemId, subnetId);
-  if (item.kind === 'bbmd' || item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') {
-    const bendY = item.kind === 'bbmd' ? 184 + index * 3 : 176 + index * 3;
-    return `M ${startX} 154 C ${startX} ${bendY}, ${endX} ${bendY}, ${endX} ${subnetY}`;
-  }
-  const laneY = 174 + index * 11;
-  return `M ${startX} 154 L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${subnetY}`;
+  const target = project.value.subnets.find(candidate => candidate.id === subnetId);
+  const endY = target ? networkY(target) : subnetY.value;
+  const bend = Math.max(24, (endY - startY) / 2);
+  return `M ${startX} ${startY} C ${startX} ${startY + bend}, ${endX} ${endY - bend}, ${endX} ${endY}`;
 }
 function fieldBusRoutePath(segment: DiagramSubnet) {
   if (!segment.upstreamSubnetId) return '';
   const routerHost = ipHostNodes.value.find(host => host.device.id === segment.routerId);
   const startX = routerHost ? hostX(routerHost) + hostWidth / 2 : networkCenter(segment.upstreamSubnetId);
-  const startY = routerHost ? ipHostY + hostHeight.value : subnetY + subnetHeight;
+  const upstream = project.value.subnets.find(candidate => candidate.id === segment.upstreamSubnetId);
+  const startY = routerHost ? hostYFor(routerHost) + hostHeight.value : upstream ? networkY(upstream) + subnetHeight : subnetY.value + subnetHeight;
   const endX = networkCenter(segment.id);
+  const endY = networkY(segment);
   const laneY = fieldBusY.value - 28;
-  return `M ${startX} ${startY} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${fieldBusY.value}`;
+  return `M ${startX} ${startY} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${endY}`;
 }
 function routerName(id: string) { return hostNodes.value.find(host => host.device.id === id)?.device.name || 'Unassigned router'; }
 
@@ -870,7 +1180,7 @@ const scLinks = computed(() => hostNodes.value.flatMap((host, hostIndex) => host
   if (infrastructureIndex >= 0) {
     const target = project.value.infrastructure[infrastructureIndex];
     targetX = infrastructureX(infrastructureIndex);
-    targetY = 154;
+    targetY = infrastructureY(infrastructureIndex) + 72;
     targetName = target.name;
   } else {
     const targetHostIndex = hostNodes.value.findIndex(candidate => candidate.device.nics.some(candidateNic => candidateNic.id === nic.scHubId));
@@ -892,9 +1202,57 @@ const scLinks = computed(() => hostNodes.value.flatMap((host, hostIndex) => host
   }];
 })));
 
+function deviceRelationshipPoint(deviceId: string, offset = 0): DiagramPoint | null {
+  const hostIndex = hostNodes.value.findIndex(host => host.device.id === deviceId);
+  if (hostIndex < 0) return null;
+  const host = hostNodes.value[hostIndex];
+  return { x: hostX(host, hostIndex) + hostWidth / 2 + offset, y: hostYFor(host) + hostHeight.value };
+}
+
+const bdtLinks = computed(() => {
+  const seen = new Set<string>();
+  return hostNodes.value.flatMap((host, relationshipIndex) => (host.device.bdtPeerDeviceIds ?? []).flatMap(peerId => {
+    const pair = [host.device.id, peerId].sort();
+    const peer = hostNodes.value.find(candidate => candidate.device.id === peerId && candidate.device.bbmdEnabled);
+    const mutual = peer?.device.bdtPeerDeviceIds?.includes(host.device.id) ?? false;
+    const id = mutual ? `bdt-${pair.join('-')}` : `bdt-${host.device.id}-${peerId}`;
+    if (seen.has(id)) return [];
+    seen.add(id);
+    const start = deviceRelationshipPoint(host.device.id, -12);
+    const end = deviceRelationshipPoint(peerId, -12);
+    if (!peer || !start || !end) return [];
+    const depth = Math.max(start.y, end.y, ipHostLayerBottom.value) + 48 + (relationshipIndex % 4) * 14;
+    return [{
+      id,
+      mutual,
+      label: mutual ? `Mutual BDT · ${host.device.name} ↔ ${peer.device.name}` : `BDT entry · ${host.device.name} → ${peer.device.name}`,
+      path: `M ${start.x} ${start.y} C ${start.x} ${depth}, ${end.x} ${depth}, ${end.x} ${end.y}`,
+      startX: start.x, startY: start.y, endX: end.x, endY: end.y,
+      labelX: (start.x + end.x) / 2, labelY: depth - 5
+    }];
+  }));
+});
+
+const fdrLinks = computed(() => hostNodes.value.flatMap((host, relationshipIndex) => {
+  const targetId = host.device.foreignDeviceBbmdId;
+  if (!targetId) return [];
+  const target = hostNodes.value.find(candidate => candidate.device.id === targetId && candidate.device.bbmdEnabled);
+  const start = deviceRelationshipPoint(host.device.id, 12);
+  const end = deviceRelationshipPoint(targetId, 12);
+  if (!target || !start || !end) return [];
+  const depth = Math.max(start.y, end.y, ipHostLayerBottom.value) + 104 + (relationshipIndex % 3) * 14;
+  return [{
+    id: `fdr-${host.device.id}-${targetId}`,
+    label: `Foreign Device Registration · ${host.device.name} → ${target.device.name}`,
+    path: `M ${start.x} ${start.y} C ${start.x} ${depth}, ${end.x} ${depth}, ${end.x} ${end.y}`,
+    startX: start.x, startY: start.y, endX: end.x, endY: end.y,
+    labelX: (start.x + end.x) / 2, labelY: depth - 5
+  }];
+}));
+
 function endpointPoint(endpointId: string): DiagramPoint | null {
   const infrastructureIndex = project.value.infrastructure.findIndex(item => item.id === endpointId);
-  if (infrastructureIndex >= 0) return { x: infrastructureX(infrastructureIndex), y: 154 };
+  if (infrastructureIndex >= 0) return { x: infrastructureX(infrastructureIndex), y: infrastructureY(infrastructureIndex) + 72 };
   const resolved = resolveAddressEndpoint(endpointId);
   if (resolved) {
     const addresses = allAddresses(resolved.host.device);
@@ -984,7 +1342,7 @@ function serializedDiagramSvg(theme: 'dark' | 'light' = 'dark', branded = false)
   clone.setAttribute('width', String(canvasWidth.value));
   clone.setAttribute('height', String(canvasHeight.value));
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-  style.textContent = `${SVG_EXPORT_STYLES}${SVG_SC_LINK_STYLES}${SVG_CONNECTION_STYLES}${theme === 'light' ? PDF_LIGHT_STYLES : ''}${SUBNET_ACCENT_EXPORT_STYLES}`;
+  style.textContent = `${SVG_EXPORT_STYLES}${SVG_SC_LINK_STYLES}${SVG_BACNET_RELATIONSHIP_STYLES}${SVG_CONNECTION_STYLES}${theme === 'light' ? PDF_LIGHT_STYLES : ''}${SUBNET_ACCENT_EXPORT_STYLES}`;
   clone.prepend(style);
   if (branded) {
     const appLogo = document.querySelector<SVGSVGElement>('.logo-icon-svg');
@@ -1092,6 +1450,7 @@ async function openJson(event: Event) {
 .export-bg{fill:#121212}.export-title{font:700 24px Montserrat,Arial,sans-serif;fill:#f8fafc}.export-notes{font:13px Inter,Arial,sans-serif;fill:#94a3b8}.layer-label{font:700 8px Inter,Arial,sans-serif;fill:#475569;letter-spacing:1.5px}.connection{fill:none;stroke:#64748b;stroke-width:2.5}.connection-dot{fill:#94a3b8}.infra-box{fill:#1e293b;stroke:#94d8ff;stroke-width:2}.infra-type{font:700 10px Inter,Arial,sans-serif;fill:#94d8ff;letter-spacing:1px}.infra-name{font:600 13px Inter,Arial,sans-serif;fill:#f8fafc}.infra-ip{font:11px monospace;fill:#94a3b8}.subnet-box{fill:#171722;stroke-width:2}.subnet-name{font:700 15px Inter,Arial,sans-serif;fill:#f8fafc}.subnet-address{font:12px monospace;fill:#cbd5e1}.subnet-meta{font:11px Inter,Arial,sans-serif;fill:#94a3b8}.device-icon{fill:#334155}.device-name{font:600 12px Inter,Arial,sans-serif;fill:#f8fafc}.device-kind{font:9px Inter,Arial,sans-serif;fill:#94a3b8;text-transform:uppercase}.footer-label{font:10px Inter,Arial,sans-serif;fill:#64748b}.node-category{font:700 9px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:1.2px}.host-box{fill:#252536;stroke:#64748b;stroke-width:1.5}.host-address-label{font:700 8px Inter,Arial,sans-serif;fill:#94a3b8}.host-address-summary{font:10px monospace;fill:#cbd5e1}.host-count-badge{fill:#0f3d39;stroke:#2dd4bf}.host-count-text{font:700 7px Inter,Arial,sans-serif;fill:#99f6e4}.address-link{fill:none;stroke-width:2.5}.address-endpoint{stroke:#121212;stroke-width:1}.address-link-label{font:9px monospace;fill:#cbd5e1;paint-order:stroke;stroke:#121212;stroke-width:4px;stroke-linejoin:round}.test-path{fill:none;stroke-width:4;opacity:.9}.test-path.success{stroke:#14ae5c}.test-path.failure{stroke:#df1219;stroke-dasharray:9 6}.test-path-label-bg.success{fill:#0d3823;stroke:#14ae5c}.test-path-label-bg.failure{fill:#3d1719;stroke:#df1219}.test-path-label{font:700 9px Inter,Arial,sans-serif}.test-path-label.success{fill:#86efac}.test-path-label.failure{fill:#fca5a5}
 .connection{stroke-width:2;stroke-linejoin:round}.address-link{stroke-width:2}.test-path{stroke-width:2.75;opacity:.78}.test-path.failure{stroke-dasharray:8 6}.path-legend-bg{fill:#181820;stroke:#334155}.path-legend-bg.success{stroke:#14ae5c}.path-legend-bg.failure{stroke:#df1219}.path-legend-dot.success{fill:#14ae5c}.path-legend-dot.failure{fill:#df1219}.path-legend-text{font:600 9px Inter,Arial,sans-serif;fill:#cbd5e1}
 .connection--routing{stroke:#64748b;stroke-width:2.5}.connection--bbmd{stroke:#94d8ff;stroke-width:2.75;stroke-dasharray:9 6}.connection--sc{stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:2 6}.connection--local{stroke:#a78bfa;stroke-width:2}.connection--routing-dot{fill:#64748b}.connection--bbmd-dot{fill:#94d8ff}.connection--sc-dot{fill:#2dd4bf}.connection--local-dot{fill:#a78bfa}
+.bdt-link{fill:none;stroke:#a78bfa;stroke-width:3;stroke-dasharray:10 5}.bdt-endpoint{fill:#a78bfa;stroke:#121212;stroke-width:1}.fdr-link{fill:none;stroke:#fb923c;stroke-width:2.75;stroke-dasharray:3 6}.fdr-endpoint{fill:#fb923c;stroke:#121212;stroke-width:1}.relationship-link-label{font:700 8px Inter,Arial,sans-serif;letter-spacing:.8px;paint-order:stroke;stroke:#121212;stroke-width:4px;stroke-linejoin:round}.relationship-link-label.bdt{fill:#c4b5fd}.relationship-link-label.fdr{fill:#fdba74}
 .sc-service-link{fill:none;stroke:#2dd4bf;stroke-width:2.5;stroke-dasharray:8 6;opacity:.9}.sc-service-endpoint{fill:#2dd4bf;stroke:#121212;stroke-width:1}
 .path-legend-title{font:700 10px Inter,Arial,sans-serif;fill:#f8fafc}.path-result-badge.success{fill:#0d3823;stroke:#14ae5c}.path-result-badge.failure{fill:#3d1719;stroke:#df1219}.path-result-text{font:700 8px Inter,Arial,sans-serif}.path-result-text.success{fill:#86efac}.path-result-text.failure{fill:#fca5a5}.path-route-label{font:700 8px Inter,Arial,sans-serif;fill:#64748b;letter-spacing:.6px}.path-route-text{font:10px monospace;fill:#cbd5e1}
 </style>

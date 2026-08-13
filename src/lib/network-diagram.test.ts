@@ -1,10 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import {
   createDefaultProject, createDevice, createDeviceAddress, createDiagramProjectFromPlan, createNic, createSubnet, createTestPath, deviceAddressState,
-  getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, normalizeDiagramProject, type DiagramDevice, type DiagramInfrastructure, type DiagramProject
+  getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, moveDeviceToSubnet, normalizeDiagramProject, type DiagramDevice, type DiagramInfrastructure, type DiagramProject
 } from './network-diagram';
 
 describe('network diagram validation', () => {
+  it('moves a device without replacing its details or cross-subnet references', () => {
+    const project = createDefaultProject();
+    const source = project.subnets[0];
+    const target = createSubnet(2);
+    project.subnets.push(target);
+    const device = source.devices[0];
+    device.bbmdEnabled = true;
+    device.notes = 'Preserve this configuration';
+    const originalAddressId = device.nics[0].addresses[0].id;
+    const secondaryNic = createNic(source.id, 2);
+    secondaryNic.addresses[0].subnetId = source.id;
+    device.nics.push(secondaryNic);
+    project.paths.push(createTestPath([originalAddressId, source.devices[1].nics[0].addresses[0].id]));
+
+    expect(moveDeviceToSubnet(project, device.id, target.id)).toBe(true);
+    expect(source.devices).not.toContain(device);
+    expect(target.devices).toContain(device);
+    expect(target.devices[0]).toBe(device);
+    expect(device.notes).toBe('Preserve this configuration');
+    expect(device.bbmdEnabled).toBe(true);
+    expect(device.nics.flatMap(nic => nic.addresses).every(address => address.subnetId === target.id)).toBe(true);
+    expect(project.paths[0].hops[0]).toBe(originalAddressId);
+  });
+
   it('supports distinct BACnet/IP networks on one IP subnet when ports and network numbers differ', () => {
     const project = createDefaultProject();
     const first = project.subnets[0];
@@ -189,16 +213,64 @@ describe('network diagram validation', () => {
     ]);
 
     const router = diagram.infrastructure.find(item => item.kind === 'router');
-    const bbmds = diagram.infrastructure.filter(item => item.kind === 'bbmd');
+    const bbmds = diagram.subnets.flatMap(subnet => subnet.devices).filter(device => device.bbmdEnabled);
     const bms = diagram.subnets[0].devices.find(device => device.kind === 'server');
     expect(router?.name).toBe('Core Router');
     expect(router?.subnetIds).toEqual(diagram.subnets.map(subnet => subnet.id));
-    expect(bbmds).toHaveLength(2);
-    expect(bbmds.map(item => item.ip)).toEqual(['10.100.10.10', '10.100.12.10']);
+    expect(diagram.infrastructure.some(item => item.kind === 'bbmd')).toBe(false);
+    expect(bbmds).toHaveLength(3);
+    expect(bbmds.map(device => device.nics[0].addresses[0].ip)).toEqual(['10.100.8.10', '10.100.10.10', '10.100.12.10']);
+    expect(bbmds.every(device => device.bdtPeerDeviceIds?.length === 2)).toBe(true);
     expect(bms?.name).toBe('BMS Server / BBMD');
     expect(bms?.bbmdEnabled).toBe(true);
     expect(bms?.nics[0].addresses[0].ip).toBe('10.100.8.10');
     expect(getDiagramDiagnostics(diagram)).toEqual([]);
+  });
+
+  it('imports planner foreign-device registration to a device-level BBMD', () => {
+    const base = { gatewayOffset: 1, vlan: 10, port: 47808, bbmdEnabled: false, bbmdOffset: 10, bmsPlaced: false, bmsRole: 'none' as const, fdrTargetSubnetId: '' };
+    const diagram = createDiagramProjectFromPlan([
+      { ...base, id: 'bms', name: 'Remote BMS', ip: '10.20.1.0', cidr: 24, bmsPlaced: true, bmsRole: 'fdr' as const, fdrTargetSubnetId: 'bbmd' },
+      { ...base, id: 'bbmd', name: 'Controls LAN', ip: '10.20.2.0', cidr: 24, vlan: 20, bbmdEnabled: true }
+    ]);
+    const bms = diagram.subnets[0].devices.find(device => device.kind === 'server');
+    const bbmd = diagram.subnets[1].devices.find(device => device.bbmdEnabled);
+    expect(bms?.foreignDeviceBbmdId).toBe(bbmd?.id);
+    expect(getDiagramDiagnostics(diagram)).toEqual([]);
+  });
+
+  it('migrates legacy infrastructure BBMDs into BACnet devices', () => {
+    const project = createDefaultProject();
+    project.infrastructure.push({ id: 'legacy-bbmd', name: 'Legacy BBMD', kind: 'bbmd', ip: '192.168.0.10', subnetIds: [project.subnets[0].id], notes: 'Old model' });
+    const path = createTestPath(['legacy-bbmd', project.subnets[0].devices[0].nics[0].addresses[0].id]);
+    project.paths.push(path);
+    normalizeDiagramProject(project);
+    const migrated = project.subnets[0].devices.find(device => device.id === 'legacy-bbmd');
+    expect(project.infrastructure.some(item => item.kind === 'bbmd')).toBe(false);
+    expect(migrated?.bbmdEnabled).toBe(true);
+    expect(migrated?.nics[0].addresses[0].ip).toBe('192.168.0.10');
+    expect(project.paths[0].hops[0]).toBe(migrated?.nics[0].addresses[0].id);
+  });
+
+  it('diagnoses non-mutual BDTs and same-subnet FDR targets', () => {
+    const project = createDefaultProject();
+    const second = createSubnet(2);
+    second.address = '192.168.1.0';
+    const firstBbmd = project.subnets[0].devices[0];
+    const secondBbmd = createDevice(1, second.id);
+    secondBbmd.nics[0].addresses[0].ip = '192.168.1.10';
+    firstBbmd.bbmdEnabled = true;
+    secondBbmd.bbmdEnabled = true;
+    firstBbmd.bdtPeerDeviceIds = [secondBbmd.id];
+    second.devices.push(secondBbmd);
+    project.subnets.push(second);
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('mutual BDT'))).toBe(true);
+    project.allowSplitHorizonBdt = true;
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('mutual BDT'))).toBe(false);
+    project.allowSplitHorizonBdt = false;
+    secondBbmd.bdtPeerDeviceIds = [firstBbmd.id];
+    project.subnets[0].devices[1].foreignDeviceBbmdId = firstBbmd.id;
+    expect(getDiagramDiagnostics(project).some(item => item.message.includes('own IP subnet'))).toBe(true);
   });
 
   it('validates BACnet/SC hub assignment, failover endpoints, L3 reachability, and hub continuity', () => {

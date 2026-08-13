@@ -38,6 +38,8 @@ export interface DiagramDevice {
   additionalInterfaces?: DiagramDeviceAddress[];
   requiredForRouting?: boolean;
   bbmdEnabled?: boolean;
+  bdtPeerDeviceIds?: string[];
+  foreignDeviceBbmdId?: string;
   bacnetIpEnabled?: boolean;
   bacnetScEnabled?: boolean;
   scHubRole?: 'node' | 'hub' | 'ha-hub';
@@ -100,6 +102,7 @@ export interface DiagramProject {
   infrastructure: DiagramInfrastructure[];
   paths: DiagramTestPath[];
   viewMode?: 'detailed' | 'networks';
+  allowSplitHorizonBdt?: boolean;
 }
 
 export interface DiagramDiagnostic {
@@ -122,7 +125,7 @@ export function createNic(subnetId = '', index = 1): DiagramNic {
 }
 
 export function createDevice(index = 1, subnetId = ''): DiagramDevice {
-  return { id: createId('device'), name: `Device ${index}`, kind: 'controller', notes: '', nics: [createNic(subnetId)] };
+  return { id: createId('device'), name: `Device ${index}`, kind: 'controller', notes: '', nics: [createNic(subnetId)], bbmdEnabled: false, bdtPeerDeviceIds: [], foreignDeviceBbmdId: '' };
 }
 
 export function createSubnet(index = 1): DiagramSubnet {
@@ -164,6 +167,20 @@ export function createTestPath(endpointIds: string[] = []): DiagramTestPath {
   };
 }
 
+export function moveDeviceToSubnet(project: DiagramProject, deviceId: string, targetSubnetId: string): boolean {
+  const source = project.subnets.find(subnet => subnet.devices.some(device => device.id === deviceId));
+  const target = project.subnets.find(subnet => subnet.id === targetSubnetId);
+  if (!source || !target || source.id === target.id) return false;
+  const deviceIndex = source.devices.findIndex(device => device.id === deviceId);
+  if (deviceIndex < 0) return false;
+  const [device] = source.devices.splice(deviceIndex, 1);
+  device.nics.forEach(nic => nic.addresses.forEach(address => {
+    if (address.subnetId === source.id) address.subnetId = target.id;
+  }));
+  target.devices.push(device);
+  return true;
+}
+
 export function createDefaultProject(): DiagramProject {
   const first = createSubnet(1);
   first.name = 'Controls LAN';
@@ -181,7 +198,8 @@ export function createDefaultProject(): DiagramProject {
     subnets: [first],
     infrastructure: [],
     paths: [],
-    viewMode: 'detailed'
+    viewMode: 'detailed',
+    allowSplitHorizonBdt: false
   };
 }
 
@@ -216,21 +234,6 @@ export function createDiagramProjectFromPlan(plan: PlannerSubnet[], splitHorizon
     infrastructure.push(coreRouter);
   }
 
-  for (const source of ipSources.filter(item => item.bbmdEnabled && !(item.bmsPlaced && item.bmsRole === 'bbmd'))) {
-    const bbmd = createInfrastructure(infrastructure.length + 1);
-    bbmd.name = `${source.name} BBMD`;
-    bbmd.kind = 'bbmd';
-    bbmd.ip = getOffsetIp(source.ip, source.cidr, source.bbmdOffset) || '';
-    bbmd.subnetIds = [idMap.get(source.id)!];
-    const targets = ipSources.filter(candidate => candidate.id !== source.id && candidate.bbmdEnabled
-      && (candidate.port || 47808) === (source.port || 47808)
-      && (!splitHorizon || source.routeTargets?.includes(candidate.id)));
-    bbmd.notes = targets.length
-      ? `Planned BDT peers: ${targets.map(target => target.name).join(', ')}`
-      : 'Local BBMD with no planned BDT peers';
-    infrastructure.push(bbmd);
-  }
-
   const scHubs = ipSources.filter(item => item.scEnabled && item.scPrimaryHubName?.trim()).map(source => {
     const hub = createInfrastructure(infrastructure.length + 1);
     hub.name = source.scFailoverEnabled ? `${source.scPrimaryHubName} HA Cluster` : source.scPrimaryHubName!;
@@ -246,6 +249,7 @@ export function createDiagramProjectFromPlan(plan: PlannerSubnet[], splitHorizon
   });
   infrastructure.push(...scHubs);
 
+  const bbmdBySourceId = new Map<string, DiagramDevice>();
   const bmsSource = ipSources.find(item => item.bmsPlaced);
   if (bmsSource) {
     const bmsSubnet = subnets.find(item => item.id === idMap.get(bmsSource.id));
@@ -269,7 +273,43 @@ export function createDiagramProjectFromPlan(plan: PlannerSubnet[], splitHorizon
           : 'Local BACnet supervisory host';
       bms.notes = `${role} · imported from Network Planner`;
       bmsSubnet.devices.push(bms);
+      if (bms.bbmdEnabled) bbmdBySourceId.set(bmsSource.id, bms);
     }
+  }
+
+  for (const source of ipSources.filter(item => item.bbmdEnabled && !bbmdBySourceId.has(item.id))) {
+    const subnet = subnets.find(item => item.id === idMap.get(source.id));
+    if (!subnet) continue;
+    const bbmd = createDevice(subnet.devices.length + 1, subnet.id);
+    bbmd.name = `${source.name} BBMD`;
+    bbmd.kind = 'controller';
+    bbmd.bbmdEnabled = true;
+    bbmd.nics[0].name = 'BACnet/IP interface';
+    bbmd.nics[0].addresses[0].ip = getOffsetIp(source.ip, source.cidr, source.bbmdOffset) || '';
+    bbmd.notes = 'BBMD-capable BACnet device imported from Network Planner';
+    subnet.devices.push(bbmd);
+    bbmdBySourceId.set(source.id, bbmd);
+  }
+
+  for (let firstIndex = 0; firstIndex < ipSources.length; firstIndex++) {
+    const first = ipSources[firstIndex];
+    const firstBbmd = bbmdBySourceId.get(first.id);
+    if (!firstBbmd) continue;
+    for (let secondIndex = firstIndex + 1; secondIndex < ipSources.length; secondIndex++) {
+      const second = ipSources[secondIndex];
+      const secondBbmd = bbmdBySourceId.get(second.id);
+      if (!secondBbmd || (first.port || 47808) !== (second.port || 47808)) continue;
+      const mutuallySelected = !splitHorizon || (first.routeTargets?.includes(second.id) && second.routeTargets?.includes(first.id));
+      if (!mutuallySelected) continue;
+      firstBbmd.bdtPeerDeviceIds!.push(secondBbmd.id);
+      secondBbmd.bdtPeerDeviceIds!.push(firstBbmd.id);
+    }
+  }
+
+  if (bmsSource?.bmsRole === 'fdr') {
+    const bms = subnets.flatMap(subnet => subnet.devices).find(device => device.kind === 'server');
+    const target = bbmdBySourceId.get(bmsSource.fdrTargetSubnetId);
+    if (bms && target) bms.foreignDeviceBbmdId = target.id;
   }
 
   const routerByKey = new Map<string, DiagramDevice>();
@@ -370,6 +410,32 @@ export function getDiagramDiagnostics(project: DiagramProject): DiagramDiagnosti
           }
         }
       }
+    }
+  }
+
+  const deviceEntries = project.subnets.flatMap(subnet => subnet.devices.map(device => ({ device, subnet })));
+  const deviceById = new Map(deviceEntries.map(entry => [entry.device.id, entry]));
+  for (const { device, subnet } of deviceEntries) {
+    const primaryAddress = device.nics.flatMap(nic => nic.addresses).find(address => address.subnetId === subnet.id);
+    if (device.bbmdEnabled) {
+      if (subnet.networkType !== 'bacnet-ip' || !primaryAddress || addressState(primaryAddress, subnet) !== 'valid') {
+        diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed BBMD'} needs a valid BACnet/IP address on its local IP subnet.` });
+      }
+      for (const peerId of device.bdtPeerDeviceIds ?? []) {
+        const peer = deviceById.get(peerId);
+        if (!peer?.device.bbmdEnabled) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed BBMD'} references a missing or disabled BDT peer.` });
+        else if (!(peer.device.bdtPeerDeviceIds ?? []).includes(device.id) && !project.allowSplitHorizonBdt) diagnostics.push({ level: 'warning', message: `${device.name || 'Unnamed BBMD'} and ${peer.device.name || 'unnamed BBMD'} do not have a mutual BDT relationship.` });
+        else if ((subnet.udpPort ?? 47808) !== (peer.subnet.udpPort ?? 47808)) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed BBMD'} and ${peer.device.name || 'unnamed BBMD'} use different BACnet/IP UDP ports and cannot form one BDT relationship.` });
+        else if (peer.subnet.id === subnet.id) diagnostics.push({ level: 'warning', message: `${device.name || 'Unnamed BBMD'} and ${peer.device.name || 'unnamed BBMD'} share one IP subnet; a BDT relationship is normally used across subnet boundaries.` });
+      }
+    } else if ((device.bdtPeerDeviceIds ?? []).length) {
+      diagnostics.push({ level: 'warning', message: `${device.name || 'Unnamed device'} has BDT peers configured but its BBMD capability is disabled.` });
+    }
+    if (device.foreignDeviceBbmdId) {
+      const target = deviceById.get(device.foreignDeviceBbmdId);
+      if (subnet.networkType !== 'bacnet-ip' || !device.nics.some(nic => nic.bacnetIpEnabled)) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed foreign device'} needs BACnet/IP enabled on an IP subnet to use FDR.` });
+      if (!target?.device.bbmdEnabled) diagnostics.push({ level: 'error', message: `${device.name || 'Unnamed foreign device'} references a missing or disabled registration BBMD.` });
+      else if (target.subnet.id === subnet.id) diagnostics.push({ level: 'warning', message: `${device.name || 'Unnamed foreign device'} is registered to a BBMD on its own IP subnet; FDR is intended for a foreign IP subnet.` });
     }
   }
 
@@ -499,6 +565,7 @@ export function getWhoIsSuggestedBroadcast(project: DiagramProject, path: Diagra
 
 export function normalizeDiagramProject(project: DiagramProject): DiagramProject {
   project.viewMode ??= 'detailed';
+  project.allowSplitHorizonBdt ??= false;
   for (const legacy of project.subnets.filter(subnet => subnet.networkType === 'bacnet-sc')) {
     const hubs = project.infrastructure.filter(item => (item.kind === 'sc-hub' || item.kind === 'sc-hub-cluster') && item.subnetIds.includes(legacy.id));
     const underlayId = hubs.flatMap(hub => hub.underlaySubnetIds ?? []).find(id => project.subnets.some(subnet => subnet.id === id && (!subnet.networkType || subnet.networkType === 'bacnet-ip')));
@@ -516,6 +583,23 @@ export function normalizeDiagramProject(project: DiagramProject): DiagramProject
     }
     project.subnets = project.subnets.filter(subnet => subnet.id !== legacy.id);
   }
+  for (const legacyBbmd of project.infrastructure.filter(item => item.kind === 'bbmd')) {
+    const ipSubnets = project.subnets.filter(candidate => !candidate.networkType || candidate.networkType === 'bacnet-ip');
+    const subnet = ipSubnets.find(candidate => legacyBbmd.subnetIds.includes(candidate.id))
+      ?? ipSubnets.find(candidate => addressState({ id: '', subnetId: candidate.id, ip: legacyBbmd.ip, label: '' }, candidate) === 'valid')
+      ?? ipSubnets[0];
+    if (!subnet) continue;
+    const device = createDevice(subnet.devices.length + 1, subnet.id);
+    device.id = legacyBbmd.id;
+    device.name = legacyBbmd.name || 'Migrated BBMD';
+    device.kind = 'controller';
+    device.notes = legacyBbmd.notes ? `${legacyBbmd.notes} · migrated from IT infrastructure` : 'Migrated from IT infrastructure';
+    device.bbmdEnabled = true;
+    device.nics[0].name = 'BACnet/IP interface';
+    device.nics[0].addresses[0].ip = legacyBbmd.ip;
+    subnet.devices.push(device);
+  }
+  project.infrastructure = project.infrastructure.filter(item => item.kind !== 'bbmd');
   for (const subnet of project.subnets) {
     subnet.networkType ??= 'bacnet-ip';
     if (subnet.udpPort === undefined) subnet.udpPort = 47808;
@@ -527,6 +611,9 @@ export function normalizeDiagramProject(project: DiagramProject): DiagramProject
     subnet.routerId ??= '';
     subnet.scDirectConnections ??= false;
     for (const device of subnet.devices) {
+      device.bbmdEnabled ??= false;
+      device.bdtPeerDeviceIds ??= [];
+      device.foreignDeviceBbmdId ??= '';
       if (!Array.isArray(device.nics)) {
         const nic = createNic(subnet.id);
         nic.addresses[0].ip = device.ip ?? '';
@@ -567,6 +654,12 @@ export function normalizeDiagramProject(project: DiagramProject): DiagramProject
   }
   if (!Array.isArray(project.paths)) project.paths = [];
   const devices = project.subnets.flatMap(subnet => subnet.devices);
+  const deviceIds = new Set(devices.map(device => device.id));
+  const bbmdIds = new Set(devices.filter(device => device.bbmdEnabled).map(device => device.id));
+  for (const device of devices) {
+    device.bdtPeerDeviceIds = [...new Set((device.bdtPeerDeviceIds ?? []).filter(id => id !== device.id && bbmdIds.has(id)))];
+    if (!deviceIds.has(device.foreignDeviceBbmdId ?? '') || !bbmdIds.has(device.foreignDeviceBbmdId ?? '')) device.foreignDeviceBbmdId = '';
+  }
   for (const path of project.paths) {
     if (!path.testType) path.testType = path.protocol.toLowerCase().includes('who-is') ? 'bacnet-whois' : 'ping';
     if (typeof path.broadcastAddress !== 'string') path.broadcastAddress = '';
@@ -611,6 +704,8 @@ export function isDiagramProject(value: unknown): value is DiagramProject {
     return typeof item.id === 'string' && typeof item.name === 'string' && (item.ip === undefined || typeof item.ip === 'string')
       && typeof item.notes === 'string' && (item.scHubId === undefined || typeof item.scHubId === 'string')
       && (item.bbmdEnabled === undefined || typeof item.bbmdEnabled === 'boolean')
+      && (item.bdtPeerDeviceIds === undefined || (Array.isArray(item.bdtPeerDeviceIds) && item.bdtPeerDeviceIds.every(id => typeof id === 'string')))
+      && (item.foreignDeviceBbmdId === undefined || typeof item.foreignDeviceBbmdId === 'string')
       && (item.scHubL3Reachable === undefined || typeof item.scHubL3Reachable === 'boolean')
       && (item.bacnetIpEnabled === undefined || typeof item.bacnetIpEnabled === 'boolean') && (item.bacnetScEnabled === undefined || typeof item.bacnetScEnabled === 'boolean')
       && (item.scHubRole === undefined || item.scHubRole === 'node' || item.scHubRole === 'hub' || item.scHubRole === 'ha-hub')

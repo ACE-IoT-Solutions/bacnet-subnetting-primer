@@ -5,5 +5,6 @@ dist/
 scratch/
 *.xml
 *.py
+*.state
 # CocoIndex Code (ccc)
 /.cocoindex_code/
