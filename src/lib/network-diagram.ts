@@ -181,6 +181,19 @@ export function moveDeviceToSubnet(project: DiagramProject, deviceId: string, ta
   return true;
 }
 
+export function createEmptyProject(): DiagramProject {
+  return {
+    version: 1,
+    title: 'Untitled BACnet Network',
+    notes: '',
+    subnets: [],
+    infrastructure: [],
+    paths: [],
+    viewMode: 'detailed',
+    allowSplitHorizonBdt: false
+  };
+}
+
 export function createDefaultProject(): DiagramProject {
   const first = createSubnet(1);
   first.name = 'Controls LAN';

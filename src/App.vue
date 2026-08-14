@@ -13,10 +13,10 @@
           </g>
         </svg>
         <div class="header-title-container">
-          <h1 class="header-title">BACnet Network Calculator</h1>
+          <h1 class="header-title">BACnet Studio <span class="header-title-byline">by ACE IoT</span></h1>
         </div>
       </div>
-      <p class="subtitle">Subnet boundaries have a big impact on BACnet networks. Use this interactive tool to visualize IP splits, test router behaviors, and simulate BBMD tunnels in real-time.</p>
+      <p class="subtitle">Plan, diagram, validate, and troubleshoot BACnet networks in one interactive workspace from ACE IoT.</p>
     </header>
 
     <!-- Navigation Tabs -->
@@ -95,7 +95,7 @@
             <path fill="#c1d200" fill-rule="nonzero" d="M16.871 36.598a11.6 11.6 0 0 0 1.557 2.53c-1.574 1.153-3.498 2.573-5.988 4.329C3.77 49.569.818 48.132.581 47.723c-.236-.41-.005-3.683 9.624-8.137 2.726-1.26 4.895-2.208 6.666-2.988zm11.886-16.25a10.785 10.785 0 0 0-2.906-.1c-.193-2.03-.467-4.584-.734-7.993-.8-10.245 2.102-12.01 2.6-12.008.498.003 3.328 1.799 2.11 12.033-.41 3.453-.793 6.026-1.07 8.067zm6.882 18.537a11.615 11.615 0 0 0 1.436-2.448c1.941.8 4.427 1.776 7.755 3.203 9.472 4.063 9.612 7.411 9.366 7.844-.247.433-3.227 2.063-11.7-3.752-2.992-2.055-5.145-3.635-6.857-4.847zm-.836-11.888c2.505 4.502 1.019 10.258-3.319 12.857-4.338 2.6-9.884 1.057-12.388-3.445-2.504-4.501-1.018-10.258 3.32-12.857 4.337-2.6 9.883-1.057 12.387 3.445zm-3.205 1.921c-1.482-2.664-4.765-3.577-7.332-2.039-2.567 1.538-3.447 4.945-1.965 7.61 1.483 2.664 4.765 3.577 7.332 2.038 2.567-1.538 3.447-4.945 1.965-7.609zm-1.924 1.297c.87 1.561.354 3.559-1.151 4.46-1.505.902-3.43.367-4.298-1.195-.869-1.562-.353-3.559 1.151-4.46 1.505-.902 3.43-.367 4.298 1.195z"></path>
           </g>
         </svg>
-        <span style="font-family: var(--font-heading); font-size: 0.9rem; color: var(--text-muted); padding-left: 0.5rem;">BACnet Network Calculator</span>
+        <span style="font-family: var(--font-heading); font-size: 0.9rem; color: var(--text-muted); padding-left: 0.5rem;">BACnet Studio by ACE IoT</span>
       </div>
       <p>Designed for control engineers, network integrators, and building automation specialists. &copy; 2026. Hosted on GitHub Pages via Actions.</p>
       <button class="footer-signup-button" type="button" @click="openSignup">

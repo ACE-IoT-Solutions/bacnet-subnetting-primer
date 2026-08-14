@@ -1,10 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createDefaultProject, createDevice, createDeviceAddress, createDiagramProjectFromPlan, createNic, createSubnet, createTestPath, deviceAddressState,
+  createDefaultProject, createDevice, createDeviceAddress, createDiagramProjectFromPlan, createEmptyProject, createNic, createSubnet, createTestPath, deviceAddressState,
   getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, moveDeviceToSubnet, normalizeDiagramProject, type DiagramDevice, type DiagramInfrastructure, type DiagramProject
 } from './network-diagram';
 
 describe('network diagram validation', () => {
+  it('creates an empty project without starter topology', () => {
+    expect(createEmptyProject()).toMatchObject({
+      version: 1,
+      title: 'Untitled BACnet Network',
+      subnets: [],
+      infrastructure: [],
+      paths: [],
+      allowSplitHorizonBdt: false
+    });
+  });
+
   it('moves a device without replacing its details or cross-subnet references', () => {
     const project = createDefaultProject();
     const source = project.subnets[0];

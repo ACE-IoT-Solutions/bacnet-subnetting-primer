@@ -1,4 +1,4 @@
-# Ace IoT — BACnet Network Calculator
+# BACnet Studio by ACE IoT
 
 Conventions and daily commands for contributors/agents working on this repository.
 

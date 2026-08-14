@@ -162,7 +162,7 @@ export async function exportPlannerXlsx(subnets: PlannerSubnet[], splitHorizon: 
     const summaryRows: RowCell[][] = [
       [makeCell("  ACE IoT SOLUTIONS", "brandHeader"), "", "", "", "", "", "", "", ""],
       [makeCell("  BACnet Subnet & BBMD Distribution Summary", "title"), "", "", "", "", "", "", "", ""],
-      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | Design Tool by ACE IoT Solutions (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", "", "", ""],
+      [makeCell(`  Generated: ${new Date().toLocaleDateString()} | BACnet Studio by ACE IoT (aceiotsolutions.com)`, "subtitle"), "", "", "", "", "", "", "", ""],
       [], // spacer
       [makeCell("Subnet Configuration List", "sectionHeader"), "", "", "", "", "", "", "", ""],
       [

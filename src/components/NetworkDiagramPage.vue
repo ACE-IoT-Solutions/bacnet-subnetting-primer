@@ -9,6 +9,8 @@
           and infrastructure. The diagram updates as you edit it.</p>
       </div>
       <div class="diagram-actions">
+        <AppButton @click="openGettingStartedDialog">Getting started</AppButton>
+        <AppButton variant="danger" @click="newProject">New project</AppButton>
         <AppButton @click="openBbmdStateDialog">Import BBMD state</AppButton>
         <AppButton @click="openNmapImportDialog">Import Nmap</AppButton>
         <AppButton @click="fileInput?.click()">Open JSON</AppButton>
@@ -376,11 +378,72 @@
                 </g>
               </g>
             </g>
-            <text class="footer-label export-footer" x="40" :y="canvasHeight - 22">Made with https://ace-iot-solutions.github.io/bacnet-subnetting-primer/</text>
+            <text class="footer-label export-footer" x="40" :y="canvasHeight - 22">BACnet Studio by ACE IoT · https://ace-iot-solutions.github.io/bacnet-subnetting-primer/</text>
           </svg>
         </div>
       </main>
     </div>
+
+    <dialog ref="gettingStartedDialog" class="nmap-import-dialog diagram-guide-dialog" aria-labelledby="diagram-guide-title">
+      <div class="pdf-export-dialog-header">
+        <div>
+          <p class="eyebrow">BUILD AN AS-BUILT OR PLAN</p>
+          <h3 id="diagram-guide-title">Get started with the Diagram Builder</h3>
+        </div>
+        <button class="pdf-dialog-close" type="button" aria-label="Close getting-started guide" @click="gettingStartedDialog?.close()">×</button>
+      </div>
+      <p class="pdf-export-description">Start from known design information, discover the BBMD topology, or inventory responsive IP hosts. You can combine these approaches and correct the diagram as field conditions become clear.</p>
+
+      <div class="diagram-guide-grid">
+        <section class="diagram-guide-step">
+          <span class="diagram-guide-number">1</span>
+          <div>
+            <h4>Start manually</h4>
+            <p>Choose <strong>New project</strong>, add each BACnet datalink, then add devices and infrastructure. Use this path for a planned design or when you already know the subnet, VLAN, BACnet network number, and device details.</p>
+            <ul>
+              <li>Define the actual network address and prefix.</li>
+              <li>Place BBMD service on the BACnet device that hosts it.</li>
+              <li>Add BDT, FDR, routing, and connectivity-test relationships.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="diagram-guide-step">
+          <span class="diagram-guide-number">2</span>
+          <div>
+            <h4>Capture a BBMD topology</h4>
+            <p><a href="https://github.com/ACE-IoT-Solutions/ace-bbmd-manager" target="_blank" rel="noopener noreferrer">ACE BBMD Manager</a> walks BDT entries from one or more known BBMDs and saves the discovered state. Install it from <a href="https://pypi.org/project/ace-bbmd-manager/" target="_blank" rel="noopener noreferrer">PyPI</a>:</p>
+            <pre><code>python -m pip install ace-bbmd-manager</code></pre>
+            <p>From a host with BACnet/IP access, identify its local interface address and a known BBMD, then write the scan to a dedicated state file:</p>
+            <pre><code>bbmd-manager -l 192.0.2.50 -s site.state walk 192.0.2.10</code></pre>
+            <p>Choose <strong>Import BBMD state</strong> and select <code>site.state</code>. Studio creates device-level BBMDs and directional BDT links. Because the state store does not include authoritative subnet definitions, imported networks begin as <strong>/24 assumptions</strong>; review and correct them.</p>
+            <p class="diagram-guide-note">A BBMD walk follows readable BDT entries. It does not discover every BACnet or IP device, and ACLs, routing, UDP ports, or one-way BDTs can limit what it sees.</p>
+            <AppButton size="sm" @click="openBbmdImportFromGuide">Open BBMD state importer</AppButton>
+          </div>
+        </section>
+
+        <section class="diagram-guide-step">
+          <span class="diagram-guide-number">3</span>
+          <div>
+            <h4>Discover responsive IP devices with Nmap</h4>
+            <p>Install <a href="https://nmap.org/download.html" target="_blank" rel="noopener noreferrer">Nmap</a>, identify the subnet you are authorized to inspect, and run a host-discovery scan. The <code>-sn</code> option discovers hosts without performing a port scan:</p>
+            <pre><code>nmap -sn 192.0.2.0/24</code></pre>
+            <p>To retain a normal-text copy as well as terminal output:</p>
+            <pre><code>nmap -sn 192.0.2.0/24 -oN subnet-scan.txt</code></pre>
+            <p>Choose <strong>Import Nmap</strong> and paste the terminal output or the contents of <code>subnet-scan.txt</code>. Select the correct prefix before importing. Responsive hosts enter as IP-only inventory because host discovery alone does not prove BACnet capability.</p>
+            <p class="diagram-guide-note warning">Only scan networks you own or are explicitly authorized to assess. Use the real subnet prefix and the appropriate connected interface; some probe types may require elevated privileges on your operating system.</p>
+            <div class="diagram-guide-links">
+              <a href="https://nmap.org/book/man-host-discovery.html" target="_blank" rel="noopener noreferrer">Nmap host-discovery reference</a>
+              <AppButton size="sm" @click="openNmapImportFromGuide">Open Nmap importer</AppButton>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="pdf-export-dialog-actions">
+        <AppButton variant="primary" @click="gettingStartedDialog?.close()">Start diagramming</AppButton>
+      </div>
+    </dialog>
 
     <dialog ref="nmapImportDialog" class="nmap-import-dialog" aria-labelledby="nmap-import-title">
       <div class="pdf-export-dialog-header">
@@ -550,7 +613,7 @@ import {
 import { createDiagramProjectFromAceBbmdState, parseAceBbmdState, type AceBbmdStateImport } from '../lib/ace-bbmd-state';
 import { groupDiagramDiagnostics } from '../lib/diagram-diagnostics';
 import {
-  addressState, createDefaultProject, createDevice, createDeviceAddress, createInfrastructure, createNic, createSubnet,
+  addressState, createDefaultProject, createDevice, createDeviceAddress, createEmptyProject, createInfrastructure, createNic, createSubnet,
   createTestPath, getDiagramDiagnostics, getWhoIsSuggestedBroadcast, isDiagramProject, moveDeviceToSubnet, normalizeDiagramProject, subnetCidr,
   type DeviceKind, type DiagramDevice, type DiagramDeviceAddress, type DiagramInfrastructure, type DiagramNic,
   type DiagramProject, type DiagramSubnet, type DiagramTestPath
@@ -569,6 +632,7 @@ const SUBNET_ACCENT_EXPORT_STYLES = `.subnet-accent{fill:var(--subnet-accent-col
 const project = ref<DiagramProject>(createDefaultProject());
 const fileInput = ref<HTMLInputElement | null>(null);
 const diagramSvg = ref<SVGSVGElement | null>(null);
+const gettingStartedDialog = ref<HTMLDialogElement | null>(null);
 const nmapImportDialog = ref<HTMLDialogElement | null>(null);
 const nmapOutput = ref('');
 const nmapCidr = ref(24);
@@ -750,6 +814,17 @@ function openBbmdStateDialog() {
   bbmdStatePreview.value = null;
   bbmdStateError.value = '';
   bbmdStateDialog.value?.showModal();
+}
+function openGettingStartedDialog() {
+  gettingStartedDialog.value?.showModal();
+}
+function openBbmdImportFromGuide() {
+  gettingStartedDialog.value?.close();
+  openBbmdStateDialog();
+}
+function openNmapImportFromGuide() {
+  gettingStartedDialog.value?.close();
+  openNmapImportDialog();
 }
 async function readBbmdStateFile(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -947,6 +1022,14 @@ function removeEndpointsFromPaths(endpointIds: string[]) {
   project.value.paths.forEach(path => { path.hops = path.hops.filter(endpointId => !removed.has(endpointId)); });
 }
 function resetProject() { if (window.confirm('Replace the current diagram with the starter example?')) project.value = createDefaultProject(); }
+function newProject() {
+  if (!window.confirm('Clear the current diagram and start a new project? This replaces the browser autosave. Save the project first if you want to keep a copy.')) return;
+  const emptyProject = createEmptyProject();
+  project.value = emptyProject;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(emptyProject));
+  activeConfigTarget.value = '';
+  nmapImportNotice.value = '';
+}
 function subnetIsValid(subnet: DiagramSubnet) {
   if (subnet.networkType === 'bacnet-sc') return Number(subnet.bacnetNetworkNumber) >= 1 && Number(subnet.bacnetNetworkNumber) <= 65534;
   if (subnet.networkType === 'mstp' || subnet.networkType === 'arcnet') return Number(subnet.bacnetNetworkNumber) >= 1 && Number(subnet.bacnetNetworkNumber) <= 65534;
@@ -1438,7 +1521,7 @@ async function openJson(event: Event) {
     if (!isDiagramProject(parsed)) throw new Error('Unsupported diagram file');
     project.value = normalizeDiagramProject(parsed);
   } catch {
-    window.alert('That file is not a valid Ace IoT network diagram project.');
+    window.alert('That file is not a valid BACnet Studio diagram project.');
   } finally {
     input.value = '';
   }

@@ -1,7 +1,7 @@
 {
-  "name": "bacnet-network-calculator",
+  "name": "bacnet-studio",
   "version": "1.0.0",
-  "description": "An interactive subnet calculator and primer explaining BACnet/IP, BACnet/Ethernet, broadcast address intersections, and BBMD routing.",
+  "description": "BACnet Studio by ACE IoT: plan, diagram, validate, and troubleshoot BACnet networks.",
   "type": "module",
   "scripts": {
     "dev": "vite",

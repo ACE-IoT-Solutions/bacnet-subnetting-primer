@@ -104,7 +104,7 @@ const submit = async () => {
   const payload = new URLSearchParams({
     email: email.value,
     consent: 'updates-email',
-    source: 'bacnet-network-calculator',
+    source: 'bacnet-studio',
     page_url: window.location.href,
     submitted_at: new Date().toISOString()
   });

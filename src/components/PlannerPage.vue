@@ -911,7 +911,7 @@ const loadPlannerProject = async (event: Event) => {
     splitHorizon.value = parsed.splitHorizon;
     plannerFileNotice.value = `Loaded ${subnets.value.length} planned ${subnets.value.length === 1 ? 'network' : 'networks'} from ${file.name}.`;
   } catch {
-    window.alert('That file is not a valid Ace IoT BACnet network plan.');
+    window.alert('That file is not a valid BACnet Studio network plan.');
   } finally {
     input.value = '';
   }

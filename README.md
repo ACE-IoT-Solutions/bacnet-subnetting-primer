@@ -1,6 +1,6 @@
-# BACnet Network & Subnet Calculator
+# BACnet Studio by ACE IoT
 
-An interactive, visual subnet calculator and primer explaining how IP subnet masks and Layer 2/Layer 3 networking affect **BACnet/IP** and **BACnet/Ethernet** networks.
+An interactive workspace for planning, diagramming, validating, and troubleshooting BACnet networks, including a visual subnet calculator and primer explaining how IP subnet masks and Layer 2/Layer 3 networking affect **BACnet/IP** and **BACnet/Ethernet** networks.
 
 This is designed for control engineers, network integrators, and building automation specialists who need to configure and troubleshoot communications on modern building automation networks.
 
@@ -15,6 +15,7 @@ This is designed for control engineers, network integrators, and building automa
   - **Isolated Subnets:** Standard routed separation requiring BBMD configuration.
 - **Live Network Simulator:** Send simulated Who-Is (Broadcast) and ReadProperty (Unicast) packets and trace their paths across switches, routers, and BBMD tunnels in real-time.
 - **Network Diagram Builder:** Document any number of subnets, devices with multiple NICs and multiple addresses per NIC, routers, switches, firewalls, and gateways in a live topology. Jump from any diagram node to its configuration card, move configured devices between compatible subnets, switch between compact, balanced, and wide layouts, model BBMD as a capability of a BACnet device, connect mutual BDT peers, show foreign-device registrations, draw ordered connectivity tests, surface address warnings, and export shareable SVG, PDF, or editable JSON files.
+- **Diagram Getting-Started Guide:** Follow an in-app workflow for manual diagrams, ACE BBMD Manager state capture/import, and authorized Nmap host discovery.
 - **Nmap Inventory Import:** Paste standard Nmap host-discovery output, choose the scanned network prefix, preview responsive hosts, and merge deduplicated IP-only devices and named gateway infrastructure into the diagram.
 - **ACE BBMD Manager Import:** Upload a `.state` store to create device-level BBMDs and observed BDT links. Because the state store omits subnet definitions, imported networks begin as reviewable `/24` assumptions.
 - **Interactive Networking Primer:**
