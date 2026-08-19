@@ -1162,6 +1162,8 @@ textarea {
 .pdf-theme-swatch { display: block; width: 54px; height: 36px; border-radius: 6px; border: 1px solid #64748b; box-shadow: inset 0 5px 0 #c1d301; }
 .pdf-theme-swatch.light { background: #fff; }
 .pdf-theme-swatch.dark { background: #121212; }
+.pdf-bbmd-option { display: grid; gap: .35rem; margin-top: .8rem; padding: .8rem; border: 1px solid rgba(167,139,250,.25); border-radius: var(--radius-md); background: rgba(167,139,250,.06); }
+.pdf-bbmd-option > span { color: var(--ace-text-muted); font-size: .7rem; line-height: 1.45; }
 .pdf-export-dialog-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.15rem; padding-top: 1rem; border-top: 1px solid var(--ace-border); }
 .pdf-export-dialog-actions .btn { min-width: auto; flex: none; }
 .nmap-import-dialog { width: min(760px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); margin: auto; padding: 1.35rem; overflow-y: auto; background: var(--ace-bg-panel); border: 1px solid var(--ace-border); border-radius: var(--radius-lg); color: var(--ace-text); box-shadow: 0 28px 80px rgba(0,0,0,0.62); }
@@ -1286,6 +1288,15 @@ textarea {
 .diagram-preview-toolbar .diagram-preview-controls { flex-direction: row; align-items: center; gap: 0.55rem; }
 .diagram-preview-controls label { color: var(--text-muted); font: 600 0.68rem var(--font-heading); }
 .diagram-preview-controls select { width: auto; min-width: 190px; padding: 0.45rem 1.8rem 0.45rem 0.6rem; font-size: 0.7rem; }
+.diagram-relationship-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .35rem 1rem; align-items: center; margin-bottom: .65rem; padding: .65rem .75rem; border: 1px solid rgba(167,139,250,.24); border-radius: var(--radius-md); background: rgba(167,139,250,.06); color: var(--text-muted); font-size: .7rem; }
+.diagram-relationship-summary strong { color: var(--text-primary); font-family: var(--font-heading); }
+.diagram-relationship-summary > small { grid-column: 1 / -1; font-size: .64rem; }
+.relationship-summary-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
+.relationship-summary-legend em { padding: .18rem .4rem; border: 1px solid currentColor; border-radius: 999px; font: normal 700 .56rem var(--font-heading); }
+.relationship-summary-legend .mutual { color: #c4b5fd; }
+.relationship-summary-legend .outbound { color: #38bdf8; }
+.relationship-summary-legend .inbound { color: #f472b6; }
+.relationship-summary-legend .fdr { color: #fb923c; }
 .reset-button { color: var(--text-muted); }
 .diagram-scroll-frame { max-width: 100%; max-height: 72vh; overflow: auto; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: #121212; box-shadow: 0 20px 50px rgba(0,0,0,0.28); }
 .network-diagram-svg { display: block; min-height: 480px; }
@@ -1293,6 +1304,13 @@ textarea {
 .diagram-node-action rect { transition: stroke .16s ease, filter .16s ease; }
 .diagram-node-action:hover rect,
 .diagram-node-action:focus-visible rect { stroke: var(--primary); filter: drop-shadow(0 0 7px rgba(var(--primary-rgb),.35)); }
+.host-relationship-focus .host-box { stroke: #f8fafc; stroke-width: 3; }
+.host-relationship-mutual .host-box { stroke: #a78bfa; stroke-width: 3; }
+.host-relationship-outbound .host-box { stroke: #38bdf8; stroke-width: 3; }
+.host-relationship-inbound .host-box { stroke: #f472b6; stroke-width: 3; }
+.host-relationship-fdr .host-box { stroke: #fb923c; stroke-width: 3; }
+.host-relationship-muted { opacity: .38; }
+.host-relationship-badge { fill: #c4b5fd; font: 700 8px var(--font-heading); letter-spacing: .7px; }
 .config-target { scroll-margin: 5rem; transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease; }
 .config-target:focus { outline: none; }
 .config-target-active { border-color: var(--primary) !important; background-color: rgba(var(--primary-rgb),.06) !important; box-shadow: 0 0 0 2px rgba(var(--primary-rgb),.22), 0 0 24px rgba(var(--primary-rgb),.12) !important; }
@@ -1375,6 +1393,9 @@ textarea {
   .diagram-preview-toolbar { align-items: flex-start; flex-direction: column; }
   .diagram-preview-toolbar .diagram-preview-controls { flex-wrap: wrap; width: 100%; }
   .diagram-preview-controls select { flex: 1 1 180px; min-width: 0; }
+  .diagram-relationship-summary { grid-template-columns: 1fr; }
+  .diagram-relationship-summary > small { grid-column: auto; }
+  .relationship-summary-legend { justify-content: flex-start; }
 }
 
 .cidr-select {
