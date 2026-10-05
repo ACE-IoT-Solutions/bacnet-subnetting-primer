@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Canonical: https://ace-iot-solutions.github.io/bacnet-planning-studio/

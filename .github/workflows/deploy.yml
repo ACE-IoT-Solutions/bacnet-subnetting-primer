@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy legacy redirect
 
 on:
   push:
@@ -6,20 +6,17 @@ on:
       - deploy
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages-${{ github.ref }}"
+  group: pages-legacy-redirect
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -27,30 +24,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Tests
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
       - name: Setup Pages
         uses: actions/configure-pages@v6
-
-      - name: Upload artifact
+      - name: Upload redirect site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
-
+          path: site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
